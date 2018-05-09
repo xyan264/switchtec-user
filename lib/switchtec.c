@@ -80,6 +80,11 @@ struct switchtec_dev *switchtec_open(const char *device)
 	char *endptr;
 	struct switchtec_dev *ret;
 
+	if (sscanf(device, "/dev/tty%*[^0-9]%d", &idx) == 1) {
+		ret = switchtec_open_uart(device);
+		goto found;
+	}
+
 	if (sscanf(device, "%2049[^@]@%i", path, &dev) == 2) {
 		ret = switchtec_open_i2c(path, dev);
 		goto found;
