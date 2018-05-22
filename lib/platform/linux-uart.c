@@ -40,6 +40,8 @@
 #include <string.h>
 
 #include <termios.h>
+#include <stdbool.h>
+#include "../crc8.h"
 
 struct switchtec_uart{
 	struct switchtec_dev dev;
@@ -94,6 +96,7 @@ static gasptr_t uart_gas_map(struct switchtec_dev *dev, int writeable, size_t *m
 //gaswr <address> <dword 1> [dword 2] [ … ], max 14 dwords
 #define GASWR_MAX_DWORDS			(16)
 #define GASWR_MAX_PAYLOAD			(14)
+#define GASWR_MAX_CRC_PAYLOAD			(12)
 #define GASWR_HDR_DWORDS			(2)
 //gas_reg_write() success
 //...
@@ -115,7 +118,6 @@ static gasptr_t uart_gas_map(struct switchtec_dev *dev, int writeable, size_t *m
 #define UART_BAUD_RATE				(230400)
 //#define	UART_DWORD_DELAY_US			(((MICROSECONDS)/(UART_BAUD_RATE))*(BITS_PER_CHAR)*(CHARS_PER_DWORD))
 #define	UART_DWORD_DELAY_US			(500)
-#define REDUNDANT_DELAY				(2)
 
 static void uart_memcpy_from_gas(struct switchtec_dev *dev, void *dest, const void __gas *src, size_t n)
 {
@@ -128,6 +130,12 @@ static void uart_memcpy_from_gas(struct switchtec_dev *dev, void *dest, const vo
 	const char *delims = "\n";
 	char gas_rd[1024];
 	char gas_rd_rtn[102400];
+	uint8_t crc_cal;
+	int crc_rtn;
+	uint8_t crc_buf[2*n];
+	uint8_t *crc_ptr = crc_buf;
+	uint32_t crc_cnt;
+	uint32_t crc_addr;
 	
 	struct switchtec_uart *udev = to_switchtec_uart(dev);
 	
@@ -135,10 +143,12 @@ static void uart_memcpy_from_gas(struct switchtec_dev *dev, void *dest, const vo
 
 	rd_dw_len = (n/4 + (n%4?1:0));
 	b = gas_rd;
-	b += snprintf(b, sizeof(gas_rd), "gasrd 0x%x", addr);	
+	b += snprintf(b, sizeof(gas_rd), "gasrd -c 0x%x", addr);
 	b += snprintf(b, sizeof(gas_rd), " %d", rd_dw_len);
  	b += snprintf(b, sizeof(gas_rd), "\r");
-	
+
+rd_crc_err:	
+	memset(gas_rd_rtn, 0, sizeof(gas_rd_rtn));
 	ret = tcflush(udev->fd,TCIOFLUSH);
 	if (ret < 0){
 		perror("tcflush error\n");
@@ -160,7 +170,6 @@ static void uart_memcpy_from_gas(struct switchtec_dev *dev, void *dest, const vo
 	usleep(GASRD_MAX_DWORDS*UART_DWORD_DELAY_US);
 	usleep((GASRD_RTN_DWORDS+rd_dw_len)*UART_DWORD_DELAY_US);
 
-	memset(gas_rd_rtn, 0, sizeof(gas_rd_rtn));
 rd_rtn_retry:
 	ret = read(udev->fd, gas_rd_rtn + strlen(gas_rd_rtn), sizeof(gas_rd_rtn));
 	if (ret < 0){
@@ -168,12 +177,8 @@ rd_rtn_retry:
 		exit(1);
 	}
 
-	if(sscanf(gas_rd_rtn, "%*[^<]<0x%x> [%d]", &raddr, &rnum) != 2){
-		usleep(500);
-		goto rd_rtn_retry;
-	}
-	if(sscanf(gas_rd_rtn, "%*[^:]:%x>", &idx) != 1){
-		usleep(500);
+	if(sscanf(gas_rd_rtn, "%*[^<]<0x%x> [%d]%*[^:]: 0x%x%*[^:]:%x>", &raddr, &rnum, &crc_rtn, &idx) != 4){
+		usleep(2000);
 		if (rty_cnt > 0){
 			rty_cnt--;
 			goto rd_rtn_retry;
@@ -182,13 +187,36 @@ rd_rtn_retry:
 
 	assert(raddr == addr);
 	assert(rnum == rd_dw_len);
+	
+	crc_addr = htobe32(addr);
+	memcpy(crc_ptr, &crc_addr, sizeof(crc_addr));
+	crc_ptr += sizeof(addr);
+
 	tok = strtok(gas_rd_rtn, delims);
 	tok = strtok(NULL, delims);
 	for (int i = 0; i<rnum; i++){
 		tok = strtok(NULL, delims);
-		*(uint32_t *) dest = strtol(tok, &tok, 0);
-		dest += 4;
+		*(uint32_t *)crc_ptr = htobe32(strtol(tok, &tok, 0));
+		crc_ptr += 4;
 	}
+
+	crc_cnt = sizeof(addr) + rd_dw_len*4;
+	crc_cal = crc8(crc_buf, crc_cnt, 0, true);
+	if (crc_cal != crc_rtn){
+		usleep(2000);
+		if (rty_cnt > 0){
+			rty_cnt--;
+			goto rd_crc_err;
+		}
+	}
+
+	crc_ptr = crc_buf + sizeof(addr);
+	for (crc_cnt = 0; crc_cnt < rd_dw_len; crc_cnt+=4){
+		*(uint32_t *)crc_ptr = be32toh(*(uint32_t *)crc_ptr);
+		crc_ptr +=4;
+	}
+	memcpy(dest, crc_buf+sizeof(addr), rd_dw_len*4);
+
 }
 
 #define create_gas_read(type, suffix) \
@@ -274,7 +302,7 @@ cli_rtn_retry:
 	}
 
 	if (sscanf(rtn, "%*[^:]:%x>", &idx) != 1){
-		usleep(500);
+		usleep(2000);
 		if (rty_cnt > 0){
 			rty_cnt--;
 			goto cli_rtn_retry;
@@ -283,7 +311,8 @@ cli_rtn_retry:
 
 }
 
-static void uart_gas_write(struct switchtec_dev *dev, void __gas *dest, const void *src, size_t n)
+static void uart_gas_write(struct switchtec_dev *dev, void __gas *dest, const void *src, 
+		size_t n, uint32_t mask)
 {
 	int ret = 0;
 	int rty_cnt = 3;
@@ -294,15 +323,48 @@ static void uart_gas_write(struct switchtec_dev *dev, void __gas *dest, const vo
 	struct switchtec_uart *udev =  to_switchtec_uart(dev);
 	char *b = gas_wr;
 	int wr_dw_len = n/4;
+	uint8_t crc_buf[2*n];
+	uint8_t *crc_ptr = crc_buf;
+	uint32_t crc;
+	uint32_t crc_cal, crc_exp;
+	uint32_t crc_cnt;
 
 	uint32_t addr = (uint32_t)(dest - (void __gas *)dev->gas_map);
-	b+= snprintf(b, sizeof(gas_wr), "gaswr 0x%x", addr);
+	if (mask){
+		memcpy(crc_buf, &addr, sizeof(addr));
+		memcpy(crc_buf+sizeof(addr), (uint8_t *)src, n);
+		memcpy(crc_buf+sizeof(addr)+n, &mask, sizeof(mask));
+		for(crc_cnt = 0; crc_cnt < (sizeof(addr)+n+sizeof(mask)); crc_cnt+=4){
+			*(uint32_t *)crc_ptr = htobe32(*(uint32_t *)crc_ptr);
+			crc_ptr += 4;
+		}
+		crc = crc8(crc_buf, sizeof(addr)+n+sizeof(mask), 0, true);
+	}else{
+		memcpy(crc_buf, &addr, sizeof(addr));
+		memcpy(crc_buf+sizeof(addr), (uint8_t *)src, n);
+		for(crc_cnt = 0; crc_cnt < (sizeof(addr)+n); crc_cnt+=4){
+			*(uint32_t *)crc_ptr = htobe32(*(uint32_t *)crc_ptr);
+			crc_ptr += 4;
+		}
+		crc = crc8(crc_buf, sizeof(addr)+n, 0, true);
+	}
+
+	if(mask)
+		b+= snprintf(b, sizeof(gas_wr), "gaswr -c -m 0x%x", addr);
+	else
+		b+= snprintf(b, sizeof(gas_wr), "gaswr -c 0x%x", addr);
+
 	for (int i = 0; i<n; i+=4 ){
 		b+= snprintf(b, sizeof(gas_wr), " 0x%x", *(uint32_t *)src);
 		src += 4;
 	}
-	b+= snprintf(b, sizeof(gas_wr), "\r");
-	
+	if(mask)
+		b+= snprintf(b, sizeof(gas_wr), " 0x%x 0x%x\r", mask, crc);
+	else
+		b+= snprintf(b, sizeof(gas_wr), " 0x%x\r", crc);
+
+wr_crc_err:	
+	memset(gas_wr_rtn, 0, sizeof(gas_wr_rtn));
 	ret = write(udev->fd, gas_wr, strlen(gas_wr));
 	if (ret != strlen(gas_wr)){
 		perror("write error\n");
@@ -318,7 +380,6 @@ static void uart_gas_write(struct switchtec_dev *dev, void __gas *dest, const vo
 	usleep((GASWR_HDR_DWORDS+wr_dw_len)*UART_DWORD_DELAY_US);
 	usleep((wr_dw_len*GASWR_RTN_DWORDS)*UART_DWORD_DELAY_US);
 
-	memset(gas_wr_rtn, 0, sizeof(gas_wr_rtn));
 wr_rtn_retry:
 	ret = read(udev->fd, gas_wr_rtn + strlen(gas_wr_rtn), sizeof(gas_wr_rtn));
 	if (ret < 0){
@@ -326,14 +387,22 @@ wr_rtn_retry:
 		exit(1);
 	}
 
-	if(sscanf(gas_wr_rtn, "%*[^:]:%x>", &idx) != 1){
-		usleep(500);
+	if (sscanf(gas_wr_rtn, "%*[^:]: [0x%x/0x%x]%*[^:]:%x>", &crc_cal, &crc_exp, &idx) != 3){
+		usleep(2000);
 		if (rty_cnt > 0){
 			rty_cnt--;
 			goto wr_rtn_retry;
 		}
-	}	
+	}
 
+	rty_cnt = 3;
+	if ((crc_exp != crc_cal) && (crc_cal != crc)){
+		usleep(2000);
+		if (rty_cnt > 0){
+			rty_cnt--;
+			goto wr_crc_err;	
+		}
+	}
 }
 
 static void uart_memcpy_to_gas(struct switchtec_dev *dev, void __gas *dest, const void *src, size_t n)
@@ -345,8 +414,8 @@ static void uart_memcpy_to_gas(struct switchtec_dev *dev, void __gas *dest, cons
 	while(n){
 		res = n/4;
 		rem = n%4; 
-		cnt = (res + (rem ? 1 : 0)) > GASWR_MAX_PAYLOAD ? GASWR_MAX_PAYLOAD : (res + (rem ? 1: 0));
-		uart_gas_write(dev, dest, src, cnt*4);
+		cnt = (res + (rem ? 1 : 0)) > GASWR_MAX_CRC_PAYLOAD ? GASWR_MAX_CRC_PAYLOAD : (res + (rem ? 1: 0));
+		uart_gas_write(dev, dest, src, cnt*4, 0);
 		dest += (cnt*4);
 		src += (cnt*4);
 		n -= (cnt*4) > n ? n : cnt*4;   	
@@ -355,22 +424,161 @@ static void uart_memcpy_to_gas(struct switchtec_dev *dev, void __gas *dest, cons
 
 static void uart_gas_write8(struct switchtec_dev *dev, uint8_t val, uint8_t __gas *addr)
 {
-	fprintf(stderr, "gas_write8 is not supported for uart accesses\n");
-	exit(1);
+	uint32_t mask = 0;
+	uint32_t tmpaddr;
+	uint32_t tmpval = val;
+	tmpaddr = (uint32_t)((void __gas *)addr - (void __gas *)0);
+	switch (tmpaddr & 0x3){
+		case 0:
+		mask = 0xff;
+		tmpval = tmpval << 0;
+		break;
+		case 1:
+		mask = 0xff << 8;
+		tmpval = tmpval << 8;
+		break;
+		case 2:
+		mask = 0xff << 16;
+		tmpval = tmpval << 16;
+		break;
+		case 3:
+		mask = 0xff << 24;
+		tmpval = tmpval << 24;
+		break;
+	}
+	tmpaddr &= ~0x3;
+	uart_gas_write(dev, tmpaddr + (void __gas *)0, &tmpval, sizeof(uint32_t), mask);
 }
 
 static void uart_gas_write16(struct switchtec_dev *dev, uint16_t val, uint16_t __gas *addr)
 {
-	fprintf(stderr, "gas_write16 is not supported for uart accesses\n");
-	exit(1);
+	uint32_t mask = 0, mask_sat = 0;
+	uint32_t tmpaddr;
+	uint32_t tmpval = val, tmpval_sat = 0;
+	tmpaddr = (uint32_t)((void __gas *)addr - (void __gas *)0);
+	switch (tmpaddr & 0x3){
+		case 0:
+		mask = 0xffff;
+		tmpval = tmpval << 0;
+		break;
+		case 1:
+		mask = 0xffff << 8;
+		tmpval = tmpval << 8;
+		break;
+		case 2:
+		mask = 0xffff << 16;
+		tmpval = tmpval << 16;
+		break;
+		case 3:
+		mask = 0xffff << 24;
+		tmpval = tmpval << 24;
+		mask_sat = 0xffff >> 8;
+		tmpval_sat = val >> 8;
+		break;
+	}
+	tmpaddr &= ~0x3;
+	uart_gas_write(dev, tmpaddr + (void __gas *)0, &tmpval, sizeof(uint32_t), mask);
+	if (mask_sat)
+		uart_gas_write(dev, tmpaddr + (void __gas *)4, &tmpval_sat, sizeof(uint32_t), mask_sat);
 }
 static void uart_gas_write32(struct switchtec_dev *dev, uint32_t val, uint32_t __gas *addr)
 {
-	uart_gas_write(dev, addr, &val, sizeof(uint32_t));
+	uint32_t mask = 0, mask_sat = 0;
+	uint32_t tmpaddr;
+	uint32_t tmpval = val, tmpval_sat = 0;
+	tmpaddr = (uint32_t)((void __gas *)addr - (void __gas *)0);
+	switch (tmpaddr & 0x3){
+		case 0:
+		mask = 0xffffffff;
+		tmpval = tmpval << 0;
+		break;
+		case 1:
+		mask = 0xffffffff << 8;
+		tmpval = tmpval << 8;
+		mask_sat = 0xffffffff >> 24;
+		tmpval_sat = val >> 24;
+		break;
+		case 2:
+		mask = 0xffffffff << 16;
+		tmpval = tmpval << 16;
+		mask_sat = 0xffffffff >> 16;
+		tmpval_sat = val >> 16;
+		break;
+		case 3:
+		mask = 0xffffffff << 24;
+		tmpval = tmpval << 24;
+		mask_sat = 0xffffffff >> 8;
+		tmpval_sat = val >> 8;
+		break;
+	}
+	tmpaddr &= ~0x3;
+	uart_gas_write(dev, tmpaddr + (void __gas *)0, &tmpval, sizeof(uint32_t), mask);
+	if (mask_sat)
+		uart_gas_write(dev, tmpaddr + (void __gas *)4, &tmpval_sat, sizeof(uint32_t),mask_sat);
 }
 static void uart_gas_write64(struct switchtec_dev *dev, uint64_t val, uint64_t __gas *addr)
 {
-	uart_gas_write(dev, addr, &val, sizeof(uint64_t));
+	uint32_t mask_low = 0, mask_middle = 0, mask_high = 0;
+	uint32_t tmpaddr;
+	uint32_t tmpval_low, tmpval_middle, tmpval_high;
+	tmpaddr = (uint32_t)((void __gas *)addr - (void __gas *)0);
+	switch (tmpaddr & 0x3){
+		case 0:
+		mask_low = 0xffffffff;
+		tmpval_low = val;
+		mask_middle = 0xffffffff;
+		tmpval_middle = val >> 32;
+		mask_high = 0;
+		tmpval_high = 0;
+		break;
+		case 1:
+		mask_low = 0xffffffff << 8;
+		tmpval_low = val << 8;
+		mask_middle = 0xffffffff;
+		tmpval_middle = (val << 8) >> 32;
+		mask_high = 0xffffffff >> 24;
+		tmpval_high = (val >> 32) >> 24;
+		break;
+		case 2:
+		mask_low = 0xffffffff << 16;
+		tmpval_low = val << 16;
+		mask_middle = 0xffffffff;
+		tmpval_middle = (val << 16) >> 32;
+		mask_high = 0xffffffff >> 16;
+		tmpval_high = (val >> 32) >> 16;
+		break;
+		case 3:
+		mask_low = 0xffffffff << 24;
+		tmpval_low = val << 24;
+		mask_middle = 0xffffffff;
+		tmpval_middle = (val << 24) >> 32;
+		mask_high = 0xffffffff >> 8;
+		tmpval_high = (val >> 32) >> 8;
+		break;
+	}
+	tmpaddr &= ~0x3;
+	uart_gas_write(dev, tmpaddr + (void __gas *)0, &tmpval_low, sizeof(uint32_t), mask_low);
+	if (mask_middle)
+		uart_gas_write(dev, tmpaddr + (void __gas *)4, &tmpval_middle, sizeof(uint32_t), mask_middle);
+	if (mask_high)
+		uart_gas_write(dev, tmpaddr + (void __gas *)8, &tmpval_high, sizeof(uint32_t), mask_high);
+
+}
+
+static ssize_t uart_write_from_gas(struct switchtec_dev *dev, int fd,
+				  const void __gas *src, size_t n)
+{
+	ssize_t ret;
+	void *buf;
+
+	buf = malloc(n);
+
+	uart_memcpy_from_gas(dev, buf, src, n);
+	ret = write(fd, buf, n);
+
+	free(buf);
+
+	return ret;
 }
 
 static const struct switchtec_ops uart_ops = {
@@ -397,7 +605,7 @@ static const struct switchtec_ops uart_ops = {
 	
 	.memcpy_to_gas = uart_memcpy_to_gas,
 	.memcpy_from_gas = uart_memcpy_from_gas,
-	.write_from_gas = NULL,
+	.write_from_gas = uart_write_from_gas,
 };
 
 static int set_uart_attribs(int fd, int speed, int parity)
