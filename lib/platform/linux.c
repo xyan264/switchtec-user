@@ -53,6 +53,8 @@ static const char *sys_path = "/sys/class/switchtec";
 struct switchtec_linux {
 	struct switchtec_dev dev;
 	int fd;
+	int use_dma_mrpc;
+	int mrpc_version;
 };
 
 #define to_switchtec_linux(d)  \
@@ -147,6 +149,32 @@ static int get_partition(struct switchtec_linux *ldev)
 
 	ldev->dev.partition_count = sysfs_read_int(syspath, 10);
 	if (ldev->dev.partition_count < 1)
+		return -1;
+
+	return 0;
+}
+
+static int get_mrpc_ver(struct switchtec_linux *ldev)
+{
+	int ret;
+	char syspath[PATH_MAX];
+
+	ret = dev_to_sysfs_path(ldev, "use_dma_mrpc", syspath,
+				sizeof(syspath));
+	if (ret)
+		return ret;
+
+	ldev->use_dma_mrpc = sysfs_read_int(syspath, 10);
+	if (ldev->use_dma_mrpc < 0)
+		return ldev->use_dma_mrpc;
+
+	ret = dev_to_sysfs_path(ldev, "mrpc_version", syspath,
+				sizeof(syspath));
+	if (ret)
+		return ret;
+
+	ldev->mrpc_version = sysfs_read_int(syspath, 10);
+	if (ldev->mrpc_version < 0)
 		return -1;
 
 	return 0;
@@ -746,6 +774,83 @@ static int linux_event_wait(struct switchtec_dev *dev, int timeout_ms)
 	return 0;
 }
 
+struct gas_read_input {
+	uint32_t offset;
+	uint32_t count;
+};
+
+static int mrpc_gas_read(struct switchtec_dev *dev, void *dest,
+			const void __gas *src, size_t n)
+{
+	int ret;
+	struct gas_read_input input = {
+		.offset = src - (void __force *)dev->gas_map,
+		.count = n,
+	};
+
+	ret = linux_cmd(dev, MRPC_GAS_READ, &input, sizeof(input),
+		  dest, n);
+
+	return ret;
+}
+
+#define create_mrpc_gas_read(type, suffix) \
+	static type mrpc_gas_read ## suffix(struct switchtec_dev *dev, \
+				       type  __gas *src) \
+	{ \
+		type ret; \
+		mrpc_gas_read(dev, &ret, src, sizeof(ret)); \
+		return ret; \
+	}
+
+create_mrpc_gas_read(uint8_t, 8);
+create_mrpc_gas_read(uint16_t, 16);
+create_mrpc_gas_read(uint32_t, 32);
+create_mrpc_gas_read(uint64_t, 64);
+
+void mrpc_memcpy_from_gas(struct switchtec_dev *dev, void *dest,
+		     const void __gas *src, size_t n)
+{
+	mrpc_gas_read(dev, dest, src, n);
+}
+
+ssize_t mrpc_write_from_gas(struct switchtec_dev *dev, int fd,
+		       const void __gas *src, size_t n)
+{
+	char buf[n];
+
+	mrpc_gas_read(dev, buf, src, n);
+
+	return write(fd, buf, n);
+}
+
+static const struct switchtec_ops linux_dma_ops = {
+	.close = linux_close,
+	.get_fw_version = linux_get_fw_version,
+	.cmd = linux_cmd,
+	.get_devices = linux_get_devices,
+	.pff_to_port = linux_pff_to_port,
+	.port_to_pff = linux_port_to_pff,
+	.gas_map = linux_gas_map,
+	.gas_unmap = linux_gas_unmap,
+	.flash_part = linux_flash_part,
+	.event_summary = linux_event_summary,
+	.event_ctl = linux_event_ctl,
+	.event_wait = linux_event_wait,
+
+	.gas_read8 = mrpc_gas_read8,
+	.gas_read16 = mrpc_gas_read16,
+	.gas_read32 = mrpc_gas_read32,
+	.gas_read64 = mrpc_gas_read64,
+	.gas_write8 = mmap_gas_write8,
+	.gas_write16 = mmap_gas_write16,
+	.gas_write32 = mmap_gas_write32,
+	.gas_write64 = mmap_gas_write64,
+	.memcpy_to_gas = mmap_memcpy_to_gas,
+	.memcpy_from_gas = mrpc_memcpy_from_gas,
+	.write_from_gas = mmap_write_from_gas,
+};
+
 static const struct switchtec_ops linux_ops = {
 	.close = linux_close,
 	.get_fw_version = linux_get_fw_version,
@@ -791,7 +896,13 @@ struct switchtec_dev *switchtec_open_by_path(const char *path)
 	if (get_partition(ldev))
 		goto err_close_free;
 
+	if (get_mrpc_ver(ldev))
+		goto err_close_free;
+
 	ldev->dev.ops = &linux_ops;
+
+	if (ldev->use_dma_mrpc && ldev->mrpc_version)
+		ldev->dev.ops = &linux_dma_ops;
 
 	return &ldev->dev;
 
