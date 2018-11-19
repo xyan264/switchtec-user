@@ -2014,7 +2014,7 @@ static struct prog_info prog_info = {
 #ifndef _WIN32
 static void sig_handler(int signum)
 {
-	if (signum == SIGBUS) {
+	if (signum == SIGBUS || signum == SIGABRT) {
 		fprintf(stderr, "Error communicating with the device. "
 			"Please check your setup.\n");
 		exit(1);
@@ -2024,12 +2024,23 @@ static void sig_handler(int signum)
 static void setup_sigbus(void)
 {
 	signal(SIGBUS, sig_handler);
+	signal(SIGABRT, sig_handler);
 }
 
 #else /* _WIN32 defined */
 
+static void sig_handler(int signum)
+{
+	if (signum == SIGABRT) {
+		fprintf(stderr, "Error communicating with the device. "
+			"Please check your setup.\n");
+		exit(1);
+	}
+}
+
 static void setup_sigbus(void)
 {
+	signal(SIGABRT, sig_handler);
 }
 
 #endif

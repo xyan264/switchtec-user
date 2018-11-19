@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <string.h>
+#include <signal.h>
 
 #ifdef __CHECKER__
 #define __force __attribute__((force))
@@ -42,6 +43,25 @@
 #endif
 
 #include "../switchtec_priv.h"
+
+static int mmap_sanity_check(struct switchtec_dev *dev,
+			     const void __gas *src,
+			     size_t n)
+{
+	int i;
+	uint8_t *ptr = (uint8_t __force *)src;
+	struct sys_info_regs __gas *si = &dev->gas_map->sys_info;
+	uint32_t *device_id = (uint32_t __force *)&si->device_id;
+
+	for (i = 0; i < n; i++) {
+		if (*(ptr + i) != 0xFF)
+			break;
+	}
+	if (i == n && *device_id == -1)
+		return -1;
+	else
+		return 0;
+}
 
 static void mmap_memcpy_to_gas(struct switchtec_dev *dev, void __gas *dest,
 			       const void *src, size_t n)
@@ -52,12 +72,22 @@ static void mmap_memcpy_to_gas(struct switchtec_dev *dev, void __gas *dest,
 static void mmap_memcpy_from_gas(struct switchtec_dev *dev, void *dest,
 				 const void __gas *src, size_t n)
 {
+	int ret;
+
+	ret = mmap_sanity_check(dev, src, n);
+	if (ret)
+		raise(SIGABRT);
 	memcpy(dest, (void __force *)src, n);
 }
 
 static ssize_t mmap_write_from_gas(struct switchtec_dev *dev, int fd,
 				   const void __gas *src, size_t n)
 {
+	int ret;
+
+	ret = mmap_sanity_check(dev, src, n);
+	if (ret)
+		raise(SIGABRT);
 	return write(fd, (void __force *)src, n);
 }
 
@@ -65,8 +95,16 @@ static ssize_t mmap_write_from_gas(struct switchtec_dev *dev, int fd,
 	static type mmap_gas_read ## suffix(struct switchtec_dev *dev, \
 					    type __gas *addr) \
 	{ \
+		uint32_t *device_id; \
+		struct sys_info_regs __gas *si = &dev->gas_map->sys_info; \
 		type *safe_addr = (type __force *)addr; \
 		asm volatile("": : :"memory"); \
+		if (*safe_addr == (type)(-1)) \
+		{ \
+			device_id = (uint32_t __force *)&si->device_id; \
+			if (*device_id == -1) \
+				raise(SIGABRT); \
+		} \
 		return *safe_addr; \
 	}
 
