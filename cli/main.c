@@ -817,6 +817,7 @@ static int test(int argc, char **argv)
 	const char *desc = "Test if switchtec interface is working";
 	int ret;
 	uint32_t in, out;
+	int i;
 
 	static struct {
 		struct switchtec_dev *dev;
@@ -829,7 +830,8 @@ static int test(int argc, char **argv)
 
 	in = time(NULL);
 
-	ret = switchtec_echo(cfg.dev, in, &out);
+	for (i = 0; i < 100; i++)
+		ret = switchtec_echo(cfg.dev, in, &out);
 
 	if (ret) {
 		switchtec_perror(argv[optind]);
