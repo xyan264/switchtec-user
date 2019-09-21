@@ -118,13 +118,15 @@ struct switchtec_fw_image_header_gen3 {
 /**
  * @brief Perform an MRPC echo command
  * @param[in]  dev      Switchtec device handle
+ * @param[in]  rpc_cmd  Command ID for this operation
  * @param[out] status   The current download status
  * @param[out] bgstatus The current MRPC background status
  * @return 0 on success, error code on failure
  */
-int switchtec_fw_dlstatus(struct switchtec_dev *dev,
-			  enum switchtec_fw_dlstatus *status,
-			  enum mrpc_bg_status *bgstatus)
+int switchtec_fw_dlstatus_ex(struct switchtec_dev *dev,
+			     enum mrpc_cmd rpc_cmd,
+			     enum switchtec_fw_dlstatus *status,
+			     enum mrpc_bg_status *bgstatus)
 {
 	uint32_t subcmd = MRPC_FWDNLD_GET_STATUS;
 	struct {
@@ -134,7 +136,7 @@ int switchtec_fw_dlstatus(struct switchtec_dev *dev,
 	} result;
 	int ret;
 
-	ret = switchtec_cmd(dev, MRPC_FWDNLD, &subcmd, sizeof(subcmd),
+	ret = switchtec_cmd(dev, rpc_cmd, &subcmd, sizeof(subcmd),
 			    &result, sizeof(result));
 
 	if (ret < 0)
@@ -145,6 +147,58 @@ int switchtec_fw_dlstatus(struct switchtec_dev *dev,
 
 	if (bgstatus != NULL)
 		*bgstatus = result.bgstatus;
+
+	return 0;
+}
+
+/**
+ * @brief Perform an MRPC echo command
+ * @param[in]  dev      Switchtec device handle
+ * @param[out] status   The current download status
+ * @param[out] bgstatus The current MRPC background status
+ * @return 0 on success, error code on failure
+ */
+int switchtec_fw_dlstatus(struct switchtec_dev *dev,
+			  enum switchtec_fw_dlstatus *status,
+			  enum mrpc_bg_status *bgstatus)
+{
+	return switchtec_fw_dlstatus_ex(dev, MRPC_FWDNLD, status, bgstatus);
+}
+
+/**
+ * @brief Wait for a firmware download chunk to complete
+ * @param[in]  dev      Switchtec device handle
+ * @param[in]  rpc_cmd  Command ID for this operation
+ * @param[out] status   The current download status
+ * @return 0 on success, error code on failure
+ *
+ * Polls the firmware download status waiting until it no longer
+ * indicates it's INPROGRESS. Sleeps 5ms between each poll.
+ */
+int switchtec_fw_wait_ex(struct switchtec_dev *dev,
+			 enum mrpc_cmd rpc_cmd,
+			 enum switchtec_fw_dlstatus *status)
+{
+	enum mrpc_bg_status bgstatus;
+	int ret;
+
+	do {
+		// Delay slightly to avoid interrupting the firmware too much
+		usleep(5000);
+
+		ret = switchtec_fw_dlstatus_ex(dev, rpc_cmd, status,
+						&bgstatus);
+		if (ret < 0)
+			return ret;
+		if (*status != SWITCHTEC_DLSTAT_INPROGRESS &&
+		    *status != SWITCHTEC_DLSTAT_COMPLETES &&
+		    *status != SWITCHTEC_DLSTAT_SUCCESS_FIRM_ACT &&
+		    *status != SWITCHTEC_DLSTAT_SUCCESS_DATA_ACT)
+			return *status;
+		if (bgstatus == MRPC_BG_STAT_ERROR)
+			return SWITCHTEC_DLSTAT_HARDWARE_ERR;
+
+	} while (bgstatus == MRPC_BG_STAT_INPROGRESS);
 
 	return 0;
 }
@@ -161,27 +215,7 @@ int switchtec_fw_dlstatus(struct switchtec_dev *dev,
 int switchtec_fw_wait(struct switchtec_dev *dev,
 		      enum switchtec_fw_dlstatus *status)
 {
-	enum mrpc_bg_status bgstatus;
-	int ret;
-
-	do {
-		// Delay slightly to avoid interrupting the firmware too much
-		usleep(5000);
-
-		ret = switchtec_fw_dlstatus(dev, status, &bgstatus);
-		if (ret < 0)
-			return ret;
-		if (*status != SWITCHTEC_DLSTAT_INPROGRESS &&
-		    *status != SWITCHTEC_DLSTAT_COMPLETES &&
-		    *status != SWITCHTEC_DLSTAT_SUCCESS_FIRM_ACT &&
-		    *status != SWITCHTEC_DLSTAT_SUCCESS_DATA_ACT)
-			return *status;
-		if (bgstatus == MRPC_BG_STAT_ERROR)
-			return SWITCHTEC_DLSTAT_HARDWARE_ERR;
-
-	} while (bgstatus == MRPC_BG_STAT_INPROGRESS);
-
-	return 0;
+	return switchtec_fw_wait_ex(dev, MRPC_FWDNLD, status);
 }
 
 /**
@@ -229,6 +263,7 @@ struct cmd_fwdl {
 /**
  * @brief Write a firmware file to the switchtec device
  * @param[in] dev		Switchtec device handle
+ * @param[in] rpc_cmd		Command ID for this operation
  * @param[in] img_fd		File descriptor for the image file to write
  * @param[in] force		If 1, ignore if another download command is
  *			        already in progress.
@@ -237,9 +272,10 @@ struct cmd_fwdl {
  * 	indicate the progress.
  * @return 0 on success, error code on failure
  */
-int switchtec_fw_write_fd(struct switchtec_dev *dev, int img_fd,
-			  int dont_activate, int force,
-			  void (*progress_callback)(int cur, int tot))
+int switchtec_fw_write_fd_ex(struct switchtec_dev *dev,
+			     enum mrpc_cmd rpc_cmd, int img_fd,
+			     int dont_activate, int force,
+			     void (*progress_callback)(int cur, int tot))
 {
 	enum switchtec_fw_dlstatus status;
 	enum mrpc_bg_status bgstatus;
@@ -252,7 +288,7 @@ int switchtec_fw_write_fd(struct switchtec_dev *dev, int img_fd,
 		return -errno;
 	lseek(img_fd, 0, SEEK_SET);
 
-	switchtec_fw_dlstatus(dev, &status, &bgstatus);
+	switchtec_fw_dlstatus_ex(dev, rpc_cmd, &status, &bgstatus);
 
 	if (!force && status == SWITCHTEC_DLSTAT_INPROGRESS) {
 		errno = EBUSY;
@@ -284,13 +320,13 @@ int switchtec_fw_write_fd(struct switchtec_dev *dev, int img_fd,
 		cmd.hdr.offset = htole32(offset);
 		cmd.hdr.blk_length = htole32(blklen);
 
-		ret = switchtec_cmd(dev, MRPC_FWDNLD, &cmd, sizeof(cmd),
+		ret = switchtec_cmd(dev, rpc_cmd, &cmd, sizeof(cmd),
 				    NULL, 0);
 
 		if (ret < 0)
 			return ret;
 
-		ret = switchtec_fw_wait(dev, &status);
+		ret = switchtec_fw_wait_ex(dev, rpc_cmd, &status);
 		if (ret != 0)
 			return ret;
 
@@ -299,6 +335,119 @@ int switchtec_fw_write_fd(struct switchtec_dev *dev, int img_fd,
 		if (progress_callback)
 			progress_callback(offset, image_size);
 
+	}
+
+	if (status == SWITCHTEC_DLSTAT_COMPLETES)
+		return 0;
+
+	if (status == SWITCHTEC_DLSTAT_SUCCESS_FIRM_ACT)
+		return 0;
+
+	if (status == SWITCHTEC_DLSTAT_SUCCESS_DATA_ACT)
+		return 0;
+
+	if (status == 0)
+		return SWITCHTEC_DLSTAT_HARDWARE_ERR;
+
+	return status;
+}
+
+/**
+ * @brief Write a firmware file to the switchtec device
+ * @param[in] dev		Switchtec device handle
+ * @param[in] img_fd		File descriptor for the image file to write
+ * @param[in] force		If 1, ignore if another download command is
+ *			        already in progress.
+ * @param[in] dont_activate	If 1, the new image will not be activated
+ * @param[in] progress_callback If not NULL, this function will be called to
+ * 	indicate the progress.
+ * @return 0 on success, error code on failure
+ */
+int switchtec_fw_write_fd(struct switchtec_dev *dev, int img_fd,
+			  int dont_activate, int force,
+			  void (*progress_callback)(int cur, int tot))
+{
+	return switchtec_fw_write_fd_ex(dev, MRPC_FWDNLD, img_fd,
+					dont_activate, force,
+					progress_callback);
+}
+
+/**
+ * @brief Write a firmware file to the switchtec device
+ * @param[in] dev		Switchtec device handle
+ * @param[in] rpc_cmd		Command ID for this operation
+ * @param[in] fimg		FILE pointer for the image file to write
+ * @param[in] dont_activate	If 1, the new image will not be activated
+ * @param[in] force		If 1, ignore if another download command is
+ *			        already in progress.
+ * @param[in] progress_callback If not NULL, this function will be called to
+ * 	indicate the progress.
+ * @return 0 on success, error code on failure
+ */
+int switchtec_fw_write_file_ex(struct switchtec_dev *dev,
+			       enum mrpc_cmd rpc_cmd, FILE *fimg,
+			       int dont_activate, int force,
+			       void (*progress_callback)(int cur, int tot))
+{
+	enum switchtec_fw_dlstatus status;
+	enum mrpc_bg_status bgstatus;
+	ssize_t image_size, offset = 0;
+	int ret;
+	struct cmd_fwdl cmd = {};
+
+	ret = fseek(fimg, 0, SEEK_END);
+	if (ret)
+		return -errno;
+	image_size = ftell(fimg);
+	if (image_size < 0)
+		return -errno;
+	ret = fseek(fimg, 0, SEEK_SET);
+	if (ret)
+		return -errno;
+
+	switchtec_fw_dlstatus_ex(dev, rpc_cmd, &status, &bgstatus);
+
+	if (!force && status == SWITCHTEC_DLSTAT_INPROGRESS) {
+		errno = EBUSY;
+		return -EBUSY;
+	}
+
+	if (bgstatus == MRPC_BG_STAT_INPROGRESS) {
+		errno = EBUSY;
+		return -EBUSY;
+	}
+
+	cmd.hdr.subcmd = MRPC_FWDNLD_DOWNLOAD;
+	cmd.hdr.dont_activate = !!dont_activate;
+	cmd.hdr.img_length = htole32(image_size);
+
+	while (offset < image_size) {
+		ssize_t blklen = fread(&cmd.data, 1, sizeof(cmd.data), fimg);
+
+		if (blklen == 0) {
+			ret = ferror(fimg);
+			if (ret)
+				return ret;
+			break;
+		}
+
+		cmd.hdr.offset = htole32(offset);
+		cmd.hdr.blk_length = htole32(blklen);
+
+		ret = switchtec_cmd(dev, rpc_cmd, &cmd, sizeof(cmd),
+				    NULL, 0);
+
+		if (ret < 0)
+			return ret;
+
+		ret = switchtec_fw_wait_ex(dev, rpc_cmd, &status);
+		if (ret != 0)
+			return ret;
+
+		offset += cmd.hdr.blk_length;
+
+		if (progress_callback)
+			progress_callback(offset, image_size);
 	}
 
 	if (status == SWITCHTEC_DLSTAT_COMPLETES)
@@ -331,80 +480,9 @@ int switchtec_fw_write_file(struct switchtec_dev *dev, FILE *fimg,
 			    int dont_activate, int force,
 			    void (*progress_callback)(int cur, int tot))
 {
-	enum switchtec_fw_dlstatus status;
-	enum mrpc_bg_status bgstatus;
-	ssize_t image_size, offset = 0;
-	int ret;
-	struct cmd_fwdl cmd = {};
-
-	ret = fseek(fimg, 0, SEEK_END);
-	if (ret)
-		return -errno;
-	image_size = ftell(fimg);
-	if (image_size < 0)
-		return -errno;
-	ret = fseek(fimg, 0, SEEK_SET);
-	if (ret)
-		return -errno;
-
-	switchtec_fw_dlstatus(dev, &status, &bgstatus);
-
-	if (!force && status == SWITCHTEC_DLSTAT_INPROGRESS) {
-		errno = EBUSY;
-		return -EBUSY;
-	}
-
-	if (bgstatus == MRPC_BG_STAT_INPROGRESS) {
-		errno = EBUSY;
-		return -EBUSY;
-	}
-
-	cmd.hdr.subcmd = MRPC_FWDNLD_DOWNLOAD;
-	cmd.hdr.dont_activate = !!dont_activate;
-	cmd.hdr.img_length = htole32(image_size);
-
-	while (offset < image_size) {
-		ssize_t blklen = fread(&cmd.data, 1, sizeof(cmd.data), fimg);
-
-		if (blklen == 0) {
-			ret = ferror(fimg);
-			if (ret)
-				return ret;
-			break;
-		}
-
-		cmd.hdr.offset = htole32(offset);
-		cmd.hdr.blk_length = htole32(blklen);
-
-		ret = switchtec_cmd(dev, MRPC_FWDNLD, &cmd, sizeof(cmd),
-				    NULL, 0);
-
-		if (ret < 0)
-			return ret;
-
-		ret = switchtec_fw_wait(dev, &status);
-		if (ret != 0)
-			return ret;
-
-		offset += cmd.hdr.blk_length;
-
-		if (progress_callback)
-			progress_callback(offset, image_size);
-	}
-
-	if (status == SWITCHTEC_DLSTAT_COMPLETES)
-		return 0;
-
-	if (status == SWITCHTEC_DLSTAT_SUCCESS_FIRM_ACT)
-		return 0;
-
-	if (status == SWITCHTEC_DLSTAT_SUCCESS_DATA_ACT)
-		return 0;
-
-	if (status == 0)
-		return SWITCHTEC_DLSTAT_HARDWARE_ERR;
-
-	return status;
+	return switchtec_fw_write_file_ex(dev, MRPC_FWDNLD, fimg,
+					  dont_activate, force,
+					  progress_callback);
 }
 
 /**

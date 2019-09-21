@@ -24,7 +24,7 @@
 ########################################################################
 
 CFLAGS=-Wall -Werror -O2 -g
-LDLIBS=-lswitchtec
+LDLIBS=-lswitchtec -lcrypto
 
 temp: temp.o
 
