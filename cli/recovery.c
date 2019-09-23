@@ -63,10 +63,9 @@ static const struct argconfig_choice secure_state_choices[] = {
 
 static int ping(int argc, char **argv)
 {
-	time_t t;
 	const char *desc = "Ping firmware and get current boot phase";
 	int ret;
-	unsigned int reply_dw;
+	uint32_t in, out;
 	enum switchtec_boot_phase phase_id;
 
 	static struct {
@@ -80,14 +79,14 @@ static int ping(int argc, char **argv)
 
 	argconfig_parse(argc, argv, desc, opts, &cfg, sizeof(cfg));
 
-	t = time(NULL);
-	ret = switchtec_ping(cfg.dev, t, &reply_dw);
+	in = time(NULL);
+	ret = switchtec_ping(cfg.dev, in, &out);
 	if (ret != 0) {
 		switchtec_perror("recovery ping");
 		return ret;
 	}
 
-	if(reply_dw != ~t) {
+	if(in != ~out) {
 		fprintf(stderr, "Unexpected ping reply from device.\n");
 		return -1;
 	}
@@ -98,7 +97,7 @@ static int ping(int argc, char **argv)
 		return ret;
 	}
 
-	printf("Ping reply received, current boot phase is: ");
+	printf("Current boot phase: ");
 	switch(phase_id) {
 	case SWITCHTEC_BOOT_PHASE_BL1:
 		printf("BL1\n");
