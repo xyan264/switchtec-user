@@ -36,6 +36,7 @@
 #include "switchtec/errors.h"
 #include "switchtec/log.h"
 #include "switchtec/endian.h"
+#include "switchtec/recovery.h"
 
 #include <string.h>
 #include <unistd.h>
@@ -191,6 +192,8 @@ struct switchtec_dev *switchtec_open(const char *device)
 	char path[PATH_MAX];
 	char *endptr;
 	struct switchtec_dev *ret;
+	int retval;
+	enum switchtec_boot_phase phase_id;
 
 	if (sscanf(device, "%2049[^@]@%i", path, &dev) == 2) {
 		ret = switchtec_open_i2c(path, dev);
@@ -245,6 +248,13 @@ found:
 	}
 
 	snprintf(ret->name, sizeof(ret->name), "%s", device);
+
+	retval = switchtec_get_boot_phase(ret, &phase_id);
+	if (retval)
+		return NULL;
+
+	if(phase_id != SWITCHTEC_BOOT_PHASE_FW)
+		return ret;
 
 	if (set_gen_variant(ret))
 		return NULL;
