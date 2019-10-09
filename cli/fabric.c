@@ -465,9 +465,9 @@ static int pax_general_body_print(
 	printf("    PDFID range:        \t0x%04hx - 0x%04hx\n",
 	       body->pdfid_start, body->pdfid_end);
 	printf("    RC Port Map:        \t0x%016" FMT_llX "\n", rc_port_map);
-	printf("    EP Port Map:        \t0x%016llx\n", ep_port_map);
-	printf("    Fabric Port Map:    \t0x%016llx\n", fab_port_map);
-	printf("    Free Port Map:      \t0x%016llx\n", free_port_map);
+	printf("    EP Port Map:        \t0x%016" FMT_llX "\n", ep_port_map);
+	printf("    Fabric Port Map:    \t0x%016" FMT_llX "\n", fab_port_map);
+	printf("    Free Port Map:      \t0x%016" FMT_llX "\n", free_port_map);
 	printf("\n");
 
 	return 0;
@@ -488,18 +488,19 @@ static int hvd_body_print(struct switchtec_dev *dev,
 	int i;
 	int log_port_count;
 
-	printf("    HVD %hhx (Physical Port ID: %hhu, HFID: 0x%04hx):\n",
+//	printf("    HVD %hhx (Physical Port ID: %hhu, HFID: 0x%04hx):\n",
+	printf("    HVD %02x (Physical Port ID: %02u, HFID: 0x%04x):\n",
 	       body->hvd_inst_id, body->phy_pid,
 	       body->hfid);
 	log_port_count = body->logical_port_count;
 
 	for (i = 0; i < log_port_count; i++) {
 		if (body->bound[i].bound)
-			printf("        Logical Port ID %hhd:    \tBound to PDFID 0x%04hx\n",
+			printf("        Logical Port ID %02d:    \tBound to PDFID 0x%04hx\n",
 			       body->bound[i].log_pid,
 			       body->bound[i].bound_pdfid);
 		else
-			printf("        Logical Port ID %hhd:    \tUnbound\n",
+			printf("        Logical Port ID %02d:    \tUnbound\n",
 			       body->bound[i].log_pid);
 	}
 
@@ -523,7 +524,7 @@ static int vep_type_to_str(uint8_t type, char *str)
 			sprintf(str, "EP_MGMT");
 			break;
 		default:
-			sprintf(str, "Unknown(%hhu)", type);
+			sprintf(str, "Unknown(%02u)", type);
 			return -1;
 	}
 
@@ -544,8 +545,8 @@ static int hvd_detail_body_print(struct switchtec_dev *dev,
 	int pos;
 
 	bdf_to_str(body->usp_bdf, bdf_str1);
-	printf("    HVD %hhx:\n"
-	       "        Physical Port ID:  \t\t%hhu\n"
+	printf("    HVD %02x:\n"
+	       "        Physical Port ID:  \t\t%02u\n"
 	       "        HFID:              \t\t0x%04hx\n"
 	       "        USP Status:        \t\t%s\n"
 	       "        USP BDF:           \t\t%s\n",
@@ -556,29 +557,29 @@ static int hvd_detail_body_print(struct switchtec_dev *dev,
 	vep_count = body->vep_count;
 	log_port_count = body->log_dsp_count;
 
-	printf("        VEPs (%hhu):\n", body->vep_count);
+	printf("        VEPs (%02u):\n", body->vep_count);
 	for (i = 0; i < vep_count; i++) {
 		vep_type_to_str(body->vep_region[i].type, vep_type_str);
 		bdf_to_str(body->vep_region[i].bdf, bdf_str1);
-		printf("            VEP %hhu:\n"
+		printf("            VEP %02u:\n"
 		       "                Type:\t\t\t%s\n"
 		       "                BDF: \t\t\t%s\n",
 		       i, vep_type_str, body->usp_status ? bdf_str1 : "N/A");
 	}
 
-	printf("        Logical Ports (%hhu):\n", body->log_dsp_count);
+	printf("        Logical Ports (%02u):\n", body->log_dsp_count);
 	for (i = 0; i < log_port_count; i++) {
 		if (body->log_port_region[i].bound) {
 			bdf_to_str(body->log_port_region[i].dsp_bdf, bdf_str1);
 			bdf_to_str(body->log_port_region[i].bound_hvd_bdf,
 				   bdf_str2);
-			printf("            Logical PID %hhu:\t\tBound to PDFID 0x%04hx (DSP BDF: %s, EP BDF: %s)\n",
+			printf("            Logical PID %02u:\t\tBound to PDFID 0x%04hx (DSP BDF: %s, EP BDF: %s)\n",
 			       body->log_port_region[i].log_pid,
 			       body->log_port_region[i].bound_pdfid,
 			       body->usp_status ? bdf_str1 : "N/A",
 			       body->usp_status ? bdf_str2 : "N/A");
 		} else
-			printf("            Logical PID %hhu:\t\tUnbound\n",
+			printf("            Logical PID %02u:\t\tUnbound\n",
 			       body->log_port_region[i].log_pid);
 	}
 
@@ -597,13 +598,13 @@ static int hvd_detail_body_print(struct switchtec_dev *dev,
 			bitmap = body->log_port_p2p_bitmap[i].config_bitmap_high;
 			bitmap <<= 32;
 			bitmap |= body->log_port_p2p_bitmap[i].config_bitmap_low;
-			printf("        Logical Port %hhu P2P config bitmap:    \t0x%016lx\n",
+			printf("        Logical Port %02u P2P config bitmap:    \t0x%016lx\n",
 			       pos, bitmap);
 
 			bitmap = body->log_port_p2p_bitmap[i].active_bitmap_high;
 			bitmap <<= 32;
 			bitmap |= body->log_port_p2p_bitmap[i].active_bitmap_low;
-			printf("        Logical Port %hhu P2P active bitmap:    \t0x%016lx\n",
+			printf("        Logical Port %02u P2P active bitmap:    \t0x%016lx\n",
 			       pos, bitmap);
 		}
 	}
@@ -635,16 +636,16 @@ static int fab_port_print(struct switchtec_dev *dev,
 	section_hdr_print(dev, &fab_port->hdr);
 
 	if (fab_port->body.attached_swfid == 0xff) {
-		printf("    Physical Port ID %hhd (Not attached)\n",
+		printf("    Physical Port ID %02d (Not attached)\n",
 		       fab_port->body.phy_pid);
 		return 0;
 	}
 
-	printf("    Physical PID %hhd:\n",
+	printf("    Physical PID %02d:\n",
 	       fab_port->body.phy_pid);
-	printf("        Attached Physical PID:\t%hhd\n",
+	printf("        Attached Physical PID:\t%02d\n",
 	       fab_port->body.attached_phy_pid);
-	printf("        Attached Switch Index:\t%hhd\n",
+	printf("        Attached Switch Index:\t%02d\n",
 	       fab_port->body.attached_sw_idx);
 	printf("        Attached SWFID:       \t0x%04hx\n",
 	       fab_port->body.attached_swfid);
@@ -704,11 +705,11 @@ static int ep_port_function_print(
 	printf("%s            VID-DID:    \t0x%04hx-0x%04hx\n", lead, func->vid, func->did);
 	if (func->bound) {
 		printf("%s            Binding:    \tBound\n", lead);
-		printf("%s                Bound PAX ID          : %hhd\n",
+		printf("%s                Bound PAX ID          : %02d\n",
 		       lead, func->bound_pax_id);
-		printf("%s                Bound HVD Physical PID: %hhd\n",
+		printf("%s                Bound HVD Physical PID: %02d\n",
 		       lead, func->bound_hvd_phy_pid);
-		printf("%s                Bound HVD Logical PID : %hhd\n",
+		printf("%s                Bound HVD Logical PID : %02d\n",
 		       lead, func->bound_hvd_log_pid);
 	} else
 		printf("%s            Binding:    \tUnbound\n", lead);
