@@ -464,7 +464,7 @@ static int pax_general_body_print(
 	       body->vdfid_start, body->vdfid_end);
 	printf("    PDFID range:        \t0x%04hx - 0x%04hx\n",
 	       body->pdfid_start, body->pdfid_end);
-	printf("    RC Port Map:        \t0x%016llx\n", rc_port_map);
+	printf("    RC Port Map:        \t0x%016" FMT_llX "\n", rc_port_map);
 	printf("    EP Port Map:        \t0x%016llx\n", ep_port_map);
 	printf("    Fabric Port Map:    \t0x%016llx\n", fab_port_map);
 	printf("    Free Port Map:      \t0x%016llx\n", free_port_map);
