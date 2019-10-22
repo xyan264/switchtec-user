@@ -19,6 +19,20 @@ AS_IF([test "x$with_curses" != xno &&
 
 AC_CHECK_HEADERS([curses.h ncurses/curses.h])
 
+AC_ARG_WITH([crypto],
+             [AS_HELP_STRING([--with-crypto],
+                           [support recovery commands @<:@default=check@:>@])],
+             [],
+             [with_crypto=check])
+
+AS_IF([test "x$with_ssl" != xno],
+       [AC_CHECK_LIB([crypto], [RSA_free], [], [], [])])
+
+AS_IF([test "x$with_ssl" != xno],
+       [AC_CHECK_DECLS([RSA_get0_key], [], [], [#include <openssl/pem.h>])])
+
+AC_CHECK_HEADERS([openssl/pem.h])
+
 AC_CONFIG_FILES([Makefile])
 
 AC_CONFIG_HEADER([config.h])
