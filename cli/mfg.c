@@ -712,7 +712,185 @@ static int secure_state_set(int argc, char **argv)
 
 	return 0;
 }
+static int load_sig_from_file(FILE *sig_fimg, uint8_t *sig)
+{
+	ssize_t rlen;
 
+	rlen = fread(sig, 1, SWITCHTEC_SIG_LEN, sig_fimg);
+
+	if (rlen < SWITCHTEC_SIG_LEN)
+		return -1;
+
+	return 0;
+}
+static int kmsk_already_exist(uint8_t *kmsk,
+			      struct switchtec_security_cfg_stat *state)
+{
+	int i;
+	int key_idx;
+	int match;
+
+	for(key_idx = 0; key_idx < state->public_key_num; key_idx++) {
+		match = 1;
+		for(i = 0; i < SWITCHTEC_KMSK_LEN; i++) {
+			if (state->public_key[key_idx][i] != kmsk[i]) {
+				match = 0;
+				break;
+			}
+		}
+
+		if (match)
+			return 1;
+	}
+
+	return 0;
+}
+
+static int kmsk_add(int argc, char **argv)
+{
+	int ret;
+	uint8_t kmsk[SWITCHTEC_KMSK_LEN];
+	uint8_t pubk[SWITCHTEC_PUB_KEY_LEN];
+	uint8_t sig[SWITCHTEC_SIG_LEN];
+	uint32_t exponent;
+	enum switchtec_boot_phase phase_id;
+	struct switchtec_security_cfg_stat state = {};
+
+	const char *desc = "Add a KSMK entry (BL1 and Main Firmware only)";
+	static struct {
+		struct switchtec_dev *dev;
+		FILE *pubk_fimg;
+		char *pubk_file;
+		FILE *sig_fimg;
+		char *sig_file;
+		FILE *kmsk_fimg;
+		char *kmsk_file;
+		int assume_yes;
+	} cfg = {};
+	const struct argconfig_options opts[] = {
+		DEVICE_OPTION_NO_PAX,
+		{"pub_key_file", 'p', .cfg_type=CFG_FILE_R,
+			.value_addr=&cfg.pubk_fimg,
+			.argument_type=required_argument,
+			.help="public key file"},
+		{"signature_file", 's', .cfg_type=CFG_FILE_R,
+			.value_addr=&cfg.sig_fimg,
+			.argument_type=required_argument,
+			.help="signature file"},
+		{"kmsk_entry_file", 'k', .cfg_type=CFG_FILE_R,
+			.value_addr=&cfg.kmsk_fimg,
+			.argument_type=required_argument,
+			.help="KMSK entry file"},
+		{"yes", 'y', "", CFG_NONE, &cfg.assume_yes, no_argument,
+		 "assume yes when prompted"},
+		{NULL}
+	};
+
+	argconfig_parse(argc, argv, desc, opts, &cfg, sizeof(cfg));
+
+	if (cfg.kmsk_file == NULL) {
+		fprintf(stderr,
+			"KSMK entry file must be set in this command!\n");
+		return -1;
+	}
+
+	ret = switchtec_get_device_info(cfg.dev, &phase_id, NULL, NULL);
+	if (ret < 0) {
+		switchtec_perror("mfg kmsk-entry-add");
+		return ret;
+	}
+	if (phase_id == SWITCHTEC_BOOT_PHASE_BL2) {
+		fprintf(stderr,
+			"This command is only available in BL1 or Main Firmware!\n");
+		return -2;
+	}
+
+	ret = switchtec_security_config_get(cfg.dev, &state);
+	if (ret < 0) {
+		switchtec_perror("mfg ksmk-entry-add");
+		return ret;
+	}
+	if (state.secure_state == SWITCHTEC_INITIALIZED_UNSECURED) {
+		fprintf(stderr,
+			"This command is only valid when secure state is not INITIALIZED_UNSECURED!\n");
+		return -3;
+	}
+
+	ret = switchtec_read_kmsk_file(cfg.kmsk_fimg, kmsk);
+	fclose(cfg.kmsk_fimg);
+	if (ret < 0) {
+		fprintf(stderr, "Invalid KMSK file %s!\n", cfg.kmsk_file);
+		return -4;
+	}
+
+	if (kmsk_already_exist(kmsk, &state)) {
+		if (!cfg.assume_yes)
+			fprintf(stderr,
+				"WARNING: the specified KMSK entry already exists on device.\n"
+				"Writing duplicate KMSK entry may render your device unbootable!\n");
+		ret = ask_if_sure(cfg.assume_yes);
+		if (ret)
+			return ret;
+	}
+
+	if (state.secure_state == SWITCHTEC_INITIALIZED_SECURED &&
+	   cfg.pubk_file == NULL) {
+		fprintf(stderr,
+			"Public key file must be specified when secure state is INITIALIZED_SECURED!\n");
+		return -4;
+	}
+
+	if (cfg.pubk_file) {
+		ret = switchtec_read_pubk_file(cfg.pubk_fimg, pubk, &exponent);
+		fclose(cfg.pubk_fimg);
+
+		if (ret < 0) {
+			fprintf(stderr, "Invalid public key file %s!\n",
+				cfg.pubk_file);
+			return -5;
+		}
+	}
+
+	if (state.secure_state == SWITCHTEC_INITIALIZED_SECURED &&
+	   cfg.sig_file == NULL) {
+		fprintf(stderr,
+			"Signature file must be specified when secure state is INITIALIZED_SECURED!\n");
+		return -5;
+	}
+
+	if (cfg.sig_file) {
+		ret = load_sig_from_file(cfg.sig_fimg, sig);
+		fclose(cfg.sig_fimg);
+
+		if (ret < 0) {
+			fprintf(stderr, "Invalid signature file %s!\n",
+				cfg.sig_file);
+			return -6;
+		}
+	}
+
+	if (!cfg.assume_yes)
+		fprintf(stderr,
+			"WARNING: This operation makes changes to the device OTP memory and is IRREVERSIBLE!\n");
+	ret = ask_if_sure(0);
+	if (ret)
+		return -7;
+
+	if (cfg.pubk_file && cfg.sig_file) {
+		ret = switchtec_kmsk_set(cfg.dev, pubk, exponent,
+				sig, kmsk);
+
+	}
+	else {
+		ret = switchtec_kmsk_set(cfg.dev, NULL, 0,
+				NULL, kmsk);
+	}
+
+	if (ret < 0)
+		switchtec_perror("mfg kmsk-entry-add");
+
+	return ret;
+}
 static const struct cmd commands[] = {
 	{"ping", ping, "Ping firmware and get current boot phase"},
 	{"info", info, "Display security settings"},
@@ -725,6 +903,8 @@ static const struct cmd commands[] = {
 		"Execute the firmware image tranferred (BL1 only)"},
 	{"boot_resume", boot_resume,
 		"Resume device boot process (BL1 and BL2 only)"},
+	{"kmsk_entry_add", kmsk_add,
+		"Add a KMSK entry (BL1 and Main Firmware only)"},
 	{"state_set", secure_state_set,
 		"Set device secure state (BL1 and Main Firmware only)"},
 	{}

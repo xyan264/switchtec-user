@@ -26,6 +26,9 @@
 #define LIBSWITCHTEC_MFG_H
 
 #define SWITCHTEC_MB_LOG_LEN	64
+
+#define SWITCHTEC_PUB_KEY_LEN	512
+#define SWITCHTEC_SIG_LEN	512
 #define SWITCHTEC_KMSK_LEN	64
 #define SWITCHTEC_KMSK_NUM	4
 
@@ -119,8 +122,16 @@ int switchtec_active_image_index_set(struct switchtec_dev *dev,
 				     struct switchtec_active_index *index);
 int switchtec_fw_exec(struct switchtec_dev *dev,
 		      enum switchtec_bl2_recovery_mode recovery_mode);
+int switchtec_kmsk_set(struct switchtec_dev *dev,
+		       uint8_t *public_key,
+		       uint32_t public_key_exp,
+		       uint8_t *signature,
+		       uint8_t *kmsk_entry_data);
 int switchtec_boot_resume(struct switchtec_dev *dev);
 int switchtec_secure_state_set(struct switchtec_dev *dev,
 			       enum switchtec_secure_state state);
+int switchtec_read_pubk_file(FILE *pubk_file, uint8_t *pubk,
+			     uint32_t *exp);
+int switchtec_read_kmsk_file(FILE *kmsk_file, uint8_t *kmsk);
 
 #endif // LIBSWITCHTEC_MFG_H

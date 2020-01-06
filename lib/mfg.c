@@ -40,6 +40,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <openssl/pem.h>
+
+#include "lib/crc32.h"
+#include "config.h"
 #define SWITCHTEC_ACTV_IMG_ID_KMAN		1
 #define SWITCHTEC_ACTV_IMG_ID_BL2		2
 #define SWITCHTEC_ACTV_IMG_ID_CFG		3
@@ -54,6 +58,23 @@
 #define SWITCHTEC_I2C_PORT_BITSHIFT		18
 #define SWITCHTEC_I2C_ADDR_BITSHIFT		22
 #define SWITCHTEC_CMD_MAP_BITSHIFT		29
+
+#if !HAVE_DECL_RSA_GET0_KEY
+/**
+*  openssl1.0 or older versions don't have this function, so copy
+*  the code from openssl1.1 here
+*/
+static void RSA_get0_key(const RSA *r, const BIGNUM **n,
+			 const BIGNUM **e, const BIGNUM **d)
+{
+	if (n != NULL)
+		*n = r->n;
+	if (e != NULL)
+		*e = r->e;
+	if (d != NULL)
+		*d = r->d;
+}
+#endif
 
 /**
  * @brief Get serial number and security version
@@ -306,6 +327,78 @@ int switchtec_boot_resume(struct switchtec_dev *dev)
 }
 
 /**
+ * @brief Set KMSK entry
+ * @param[in]  dev		Switchtec device handle
+ * @param[in]  public_key	Public key
+ * @param[in]  public_key_exp	Public key exponent
+ * @param[in]  signature	Signature
+ * @param[in]  kmsk_entry_data	KMSK entry data
+ * @return 0 on success, error code on failure
+ */
+int switchtec_kmsk_set(struct switchtec_dev *dev,
+		       uint8_t *public_key,
+		       uint32_t public_key_exp,
+		       uint8_t *signature,
+		       uint8_t *kmsk_entry_data)
+{
+	int ret;
+	struct kmsk_cmd1 {
+		uint8_t subcmd;
+		uint8_t reserved[3];
+		uint8_t pub_key[SWITCHTEC_PUB_KEY_LEN];
+		uint32_t pub_key_exponent;
+	} cmd1;
+
+	struct kmsk_cmd2 {
+		uint8_t subcmd;
+		uint8_t reserved[3];
+		uint8_t signature[SWITCHTEC_SIG_LEN];
+	} cmd2;
+
+	struct kmsk_cmd3 {
+		uint8_t subcmd;
+		uint8_t num_entries;
+		uint8_t reserved[2];
+		uint8_t kmsk[SWITCHTEC_KMSK_LEN];
+	} cmd3;
+
+	if (public_key) {
+		memset(&cmd1, 0, sizeof(cmd1));
+		cmd1.subcmd = MRPC_KMSK_ENTRY_SET_PKEY;
+		memcpy(cmd1.pub_key, public_key, SWITCHTEC_PUB_KEY_LEN);
+		cmd1.pub_key_exponent = htole32(public_key_exp);
+
+		ret = switchtec_cmd(dev, MRPC_KMSK_ENTRY_SET, &cmd1,
+				    sizeof(cmd1), NULL, 0);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	if (signature) {
+		memset(&cmd2, 0, sizeof(cmd2));
+		cmd2.subcmd = MRPC_KMSK_ENTRY_SET_SIG;
+		memcpy(cmd2.signature, signature, SWITCHTEC_SIG_LEN);
+
+		ret = switchtec_cmd(dev, MRPC_KMSK_ENTRY_SET, &cmd2,
+			    	    sizeof(cmd2), NULL, 0);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	memset(&cmd3, 0, sizeof(cmd3));
+	cmd3.subcmd = MRPC_KMSK_ENTRY_SET_KMSK;
+	cmd3.num_entries = 1;
+	memcpy(cmd3.kmsk, kmsk_entry_data, SWITCHTEC_KMSK_LEN);
+
+	ret = switchtec_cmd(dev, MRPC_KMSK_ENTRY_SET, &cmd3, sizeof(cmd3),
+			    NULL, 0);
+	return ret;
+}
+
+
+/**
  * @brief Set device secure state
  * @param[in]  dev	Switchtec device handle
  * @param[in]  state	Secure state
@@ -324,4 +417,73 @@ int switchtec_secure_state_set(struct switchtec_dev *dev,
 
 	return switchtec_cmd(dev, MRPC_SECURE_STATE_SET, &data, sizeof(data),
 			     NULL, 0);
+}
+
+
+/**
+ * @brief Read public key from public key file
+ * @param[in]  pubk_file Public key file
+ * @param[out] pubk	 Public key
+ * @param[out] exp	 Public key exponent
+ * @return 0 on success, error code on failure
+ */
+int switchtec_read_pubk_file(FILE *pubk_file, uint8_t *pubk,
+			     uint32_t *exp)
+{
+	RSA	     *RSAKey = NULL;
+	const BIGNUM    *modulus_bn;
+	const BIGNUM    *exponent_bn;
+	uint32_t    exponent_tmp = 0;
+
+	RSAKey = PEM_read_RSA_PUBKEY(pubk_file, NULL, NULL, NULL);
+	if (RSAKey == NULL) {
+		return -1;
+	}
+
+	RSA_get0_key(RSAKey, &modulus_bn, &exponent_bn, NULL);
+
+	BN_bn2bin(modulus_bn, pubk);
+	BN_bn2bin(exponent_bn, (uint8_t *)&exponent_tmp);
+
+	*exp = be32toh(exponent_tmp);
+	RSA_free(RSAKey);
+
+	return 0;
+}
+
+/**
+ * @brief Read KMSK data from KMSK file
+ * @param[in]  kmsk_file KMSK file
+ * @param[out] kmsk   	 KMSK entry data
+ * @return 0 on success, error code on failure
+ */
+int switchtec_read_kmsk_file(FILE *kmsk_file, uint8_t *kmsk)
+{
+	ssize_t rlen;
+	struct kmsk_struct {
+		uint8_t magic[4];
+		uint32_t version;
+		uint32_t reserved;
+		uint32_t crc32;
+		uint8_t kmsk[SWITCHTEC_KMSK_LEN];
+	} s;
+
+	char magic[4] = {'K', 'M', 'S', 'K'};
+	uint32_t crc;
+
+	rlen = fread(&s, 1, sizeof(s), kmsk_file);
+
+	if (rlen < sizeof(s))
+		return -EBADF;
+
+	if (memcmp(s.magic, magic, sizeof(magic)))
+		return -EBADF;
+
+	crc = crc32(s.kmsk, SWITCHTEC_KMSK_LEN, 0, 1, 1);
+	if (crc != le32toh(s.crc32))
+		return -EBADF;
+
+	memcpy(kmsk, s.kmsk, SWITCHTEC_KMSK_LEN);
+
+	return 0;
 }
