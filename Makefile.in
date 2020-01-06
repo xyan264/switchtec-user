@@ -86,11 +86,17 @@ else
 NQ=:
 endif
 
+Q=
+
 ifeq ($(W), 1)
 CFLAGS += -Werror
 endif
 
-compile: $(STLIBNAME) $(SHLIBNAME) $(EXENAME) examples/temp
+compile: chkenv $(STLIBNAME) $(SHLIBNAME) $(EXENAME) examples/temp
+
+chkenv:
+	echo $(INCDIR)
+	echo 'checkenv'
 
 clean:
 	$(Q)rm -rf $(STLIBNAME) $(SHLIBNAME) $(EXENAME) $(OBJDIR) *.a \
