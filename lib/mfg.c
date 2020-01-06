@@ -40,7 +40,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "openssl/pem.h"
+#include "/usr/include/openssl/pem.h"
 
 #include "lib/crc32.h"
 #include "config.h"
