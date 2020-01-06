@@ -22,6 +22,7 @@ matrix:
           packages:
             - gcc-mingw-w64-x86-64
             - mingw-w64-x86-64-dev
+            - libssl-dev
       env:
         - CONFIG_OPTS="--host x86_64-w64-mingw32"
         - MATRIX_EVAL="CC=x86_64-w64-mingw32-gcc"
@@ -32,6 +33,7 @@ matrix:
           packages:
             - gcc-mingw-w64-i686
             - mingw-w64-i686-dev
+            - libssl-dev
       env:
         - CONFIG_OPTS="--host i686-w64-mingw32"
         - MATRIX_EVAL="CC=i686-w64-mingw32-gcc"
