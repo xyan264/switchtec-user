@@ -46,9 +46,31 @@ matrix:
         - MATRIX_EVAL="CC=cgcc"
         - MAKE_FLAGS="CFLAGS=-Wsparse-error CFLAGS+=-Wno-vla CFLAGS+=-Wno-old-initializer"
 
+before_script:
+    - if [ "$CC" = i686-w64-mingw32-gcc ]; then
+          export CROSS_COMPILE=${CC%%gcc}; unset CC;
+          wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz
+          tar -xzvf openssl-1.0.2p.tar.gz
+          cd openssl-1.0.2p/
+          ./Configure mingw --prefix=/usr/local/openssl $CONFIG_OPTS -Wno-pedantic-ms-format;
+          make depend
+          make
+          sudo make install 
+      elif [ "$CC" = x86_64-w64-mingw32-gcc ]; then
+          export CROSS_COMPILE=${CC%%gcc}; unset CC;
+          wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz
+          tar -xzvf openssl-1.0.2p.tar.gz
+          cd openssl-1.0.2p/
+          ./Configure mingw64 --prefix=/usr/local/openssl $CONFIG_OPTS -Wno-pedantic-ms-format;
+          make depend
+          make
+          sudo make install 
+
+      else
+
+      fi
 before_install:
     - eval "${MATRIX_EVAL}"
-    - ./mingw_install_ssl.sh
 
 
 notifications:
