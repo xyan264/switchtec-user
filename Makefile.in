@@ -65,8 +65,8 @@ ifeq ($(findstring mingw,$(MACHINE)),mingw)
   SHLDLIBS = -lsetupapi
   LDLIBS += -lsetupapi
   LDCONFIG=
-  override CPPFLAGS += -DNTDDI_VERSION=NTDDI_VISTA -D_WIN32_WINNT=_WIN32_WINNT_VISTA 
-  override CPATH += -I/usr/include -I /usr/local/include 
+  override CPPFLAGS += -DNTDDI_VERSION=NTDDI_VISTA -D_WIN32_WINNT=_WIN32_WINNT_VISTA -I /usr/local/include 
+  override CPATH += -I /usr/local/include 
 else
   EXENAME ?= switchtec
   INSTEXENAME ?= $(EXENAME)

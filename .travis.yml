@@ -51,6 +51,7 @@ before_install:
     - sudo apt-get update
     - sudo apt-get install libssl-dev
     - ls /usr/include/openssl
+    - sudo ln -s /usr/include/openssl /usr/local/include/openssl
 
 
 notifications:
