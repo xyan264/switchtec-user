@@ -48,10 +48,7 @@ matrix:
 
 before_install:
     - eval "${MATRIX_EVAL}"
-    - sudo apt-get update
-    - sudo apt-get install libssl-dev
-    - ls /usr/include/openssl
-    - sudo ln -s /usr/include/openssl /usr/local/include/openssl
+    - ./mingw_install_ssl.sh
 
 
 notifications:
