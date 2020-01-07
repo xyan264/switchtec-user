@@ -52,7 +52,7 @@ before_script:
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
-          ./Configure mingw --prefix=/usr/local/openssl $CONFIG_OPTS -Wno-pedantic-ms-format;
+          ./Configure --prefix=/usr/local/openssl no-idea no-mdc2 no-rc5 shared mingw;
           make depend;
           make;
           sudo make install ;
@@ -61,7 +61,7 @@ before_script:
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
-          ./Configure mingw64 --prefix=/usr/local/openssl $CONFIG_OPTS -Wno-pedantic-ms-format;
+          ./Configure --prefix=/usr/local/openssl no-idea no-mdc2 no-rc5 shared mingw64;
           make depend;
           make;
           sudo make install ;
