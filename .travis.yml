@@ -67,7 +67,7 @@ before_script:
           sudo make install ;
 
       else
-
+          ;
       fi
 before_install:
     - eval "${MATRIX_EVAL}"
