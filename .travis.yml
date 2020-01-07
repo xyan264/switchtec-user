@@ -48,7 +48,7 @@ matrix:
 
 before_script:
     - if [ "$CC" = i686-w64-mingw32-gcc ]; then
-          export CROSS_COMPILE=${CC%%gcc}; unset CC;
+          sudo ln -s /usr/bin/i686_64-w64-mingw32-windres /usr/bin/windres
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
@@ -57,7 +57,7 @@ before_script:
           make;
           sudo make install ;
       elif [ "$CC" = x86_64-w64-mingw32-gcc ]; then
-          export CROSS_COMPILE=${CC%%gcc}; unset CC;
+          sudo ln -s /usr/bin/x86_64-w64-mingw32-windres /usr/bin/windres
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
