@@ -3537,6 +3537,8 @@ if ${ac_cv_lib_crypto_RSA_free+:} false; then :
 else
   ac_check_lib_save_LIBS=$LIBS
 LIBS="-lcrypto  $LIBS"
+$as_echo_n "ldflags $CFLAGS $CPPFLAGS $LDFLAGS  $LIBS"
+
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -3560,6 +3562,8 @@ if ac_fn_c_try_link "$LINENO"; then :
 else
   ac_cv_lib_crypto_RSA_free=no
 fi
+cp conftest.err rsa_link.err
+cat rsa_link.err
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
