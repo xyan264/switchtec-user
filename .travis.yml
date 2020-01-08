@@ -52,7 +52,7 @@ before_script:
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
-          ./Configure --cross-compile-prefix=/usr/bin/ mingw;
+          ./Configure --prefix=/usr/i686_64-w64-mingw32 --cross-compile-prefix=/usr/bin/ mingw;
           make depend;
           make;
           sudo make install ;
@@ -62,7 +62,7 @@ before_script:
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
-          ./Configure --cross-compile-prefix=/usr/bin/ mingw64;
+          ./Configure --prefix=/usr/x86_64-w64-mingw32 --cross-compile-prefix=/usr/bin/ mingw64;
           make depend;
           make;
           sudo make install ;
