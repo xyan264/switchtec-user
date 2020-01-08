@@ -86,6 +86,7 @@ else
 NQ=:
 endif
 
+Q=
 
 ifeq ($(W), 1)
 CFLAGS += -Werror
