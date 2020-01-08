@@ -41,7 +41,7 @@ CC=@CC@
 WINDRES=@WINDRES@
 override CPPFLAGS+=@CPPFLAGS@
 override CPPFLAGS+=-I. -Iinc -I$(OBJDIR) -DCOMPLETE_ENV=\"SWITCHTEC_COMPLETE\"
-override CFLAGS+=-v -g -Wall -Wno-initializer-overrides @CFLAGS@
+override CFLAGS+= -g -Wall -Wno-initializer-overrides @CFLAGS@
 DEPFLAGS= -MT $@ -MMD -MP -MF $(OBJDIR)/$*.d
 LDLIBS=@LIBS@
 override LDFLAGS+=@LDFLAGS@
@@ -115,7 +115,7 @@ $(OBJDIR):
 
 $(OBJDIR)/%.o: %.c | $(OBJDIR)
 	@$(NQ) echo "  CC    $<"
-	$(Q)$(COMPILE.c) $(DEPFLAGS) $< -o $@ 2>&1 | sed ':1;s,/[^/.][^/]*/\.\./,/,;t 1'
+	$(Q)$(COMPILE.c) $(DEPFLAGS) $< -o $@ 
 
 $(OBJDIR)/%.o: %.rc $(OBJDIR)/version.h | $(OBJDIR)
 	@$(NQ) echo "  RC    $<"
