@@ -50,12 +50,12 @@ before_script:
           wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
           tar -xzvf openssl-1.0.2p.tar.gz;
           cd openssl-1.0.2p/;
-          ./Configure --prefix=/usr/i686_64-w64-mingw32 --openssldir=/usr/i686_64-w64-mingw32 --cross-compile-prefix=/usr/bin/ mingw;
+          ./Configure --prefix=/usr/i686-w64-mingw32 --openssldir=/usr/i686-w64-mingw32 --cross-compile-prefix=/usr/bin/ mingw;
           make depend;
           make;
           sudo make install ;
-          ls /usr/i686_64-w64-mingw32/include;
-          ls /usr/i686_64-w64-mingw32/lib;
+          ls /usr/i686-w64-mingw32/include;
+          ls /usr/i686-w64-mingw32/lib;
           i686-w64-mingw32-gcc -print-search-dirs | sed '/^lib/b 1;d;:1;s,/[^/.][^/]*/\.\./,/,;t 1;s,:[^=]*=,:;,;s,;,;  ,g' | tr \; \\012;
           cd ..;
       elif [ "$CC" = x86_64-w64-mingw32-gcc ]; then
