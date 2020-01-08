@@ -54,6 +54,8 @@ before_script:
           make depend;
           make;
           sudo make install ;
+	  ls /usr/i686_64-w64-mingw32/include;
+	  ls /usr/i686_64-w64-mingw32/lib;
           cd ..;
       elif [ "$CC" = x86_64-w64-mingw32-gcc ]; then
           sudo ln -s /usr/bin/x86_64-w64-mingw32-windres /usr/bin/windres;
