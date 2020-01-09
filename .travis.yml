@@ -55,16 +55,12 @@ before_script:
           make depend;
           make;
           sudo make install ;
-          ls /usr/i686-w64-mingw32/include;
-          ls /usr/i686-w64-mingw32/lib;
-          grep RSA_free /usr/i686-w64-mingw32/lib/libcrypto.a;
-          i686-w64-mingw32-gcc -print-search-dirs | sed '/^lib/b 1;d;:1;s,/[^/.][^/]*/\.\./,/,;t 1;s,:[^=]*=,:;,;s,;,;  ,g' | tr \; \\012;
           cd ..;
       elif [ "$CC" = x86_64-w64-mingw32-gcc ]; then
           sudo ln -s /usr/bin/x86_64-w64-mingw32-windres /usr/bin/windres;
-          wget -c https://www.openssl.org/source/openssl-1.0.2p.tar.gz;
-          tar -xzvf openssl-1.0.2p.tar.gz;
-          cd openssl-1.0.2p/;
+          wget -c https://www.openssl.org/source/openssl-1.0.2g.tar.gz;
+          tar -xzvf openssl-1.0.2g.tar.gz;
+          cd openssl-1.0.2g/;
           ./Configure --prefix=/usr/x86_64-w64-mingw32 --openssldir=/usr/x86_64-w64-mingw32 --cross-compile-prefix=/usr/bin/ mingw64;
           make depend;
           make;
