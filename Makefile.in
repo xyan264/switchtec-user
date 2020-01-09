@@ -62,8 +62,8 @@ ifeq ($(findstring mingw,$(MACHINE)),mingw)
   SHLIBNAME ?= switchtec.dll
   IMPLIBNAME ?= libswitchtec.dll.a
   override LDFLAGS += -Wl,--out-implib,$(IMPLIBNAME)
-  SHLDLIBS = -lsetupapi
-  LDLIBS += -lsetupapi -lcrypto
+  SHLDLIBS = -lsetupapi -lcrypto -mwindows
+  LDLIBS += -lsetupapi -lcrypto -mwindows
   LDCONFIG=
   override CPPFLAGS += -DNTDDI_VERSION=NTDDI_VISTA -D_WIN32_WINNT=_WIN32_WINNT_VISTA
 else
