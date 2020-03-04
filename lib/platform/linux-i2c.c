@@ -377,8 +377,8 @@ static void i2c_gas_write(struct switchtec_dev *dev, void __gas *dest,
 
 	do {
 		tag = get_tag(idev);
-		i2c_gas_data_write(dev, dest, src, n, tag);
-		status = i2c_gas_write_status_get(dev, tag);
+		status = i2c_gas_data_write(dev, dest, src, n, tag);
+		//status = i2c_gas_write_status_get(dev, tag);
 		if (status == 0 || status == GAS_TWI_MRPC_ERR)
 			break;
 
