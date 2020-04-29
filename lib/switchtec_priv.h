@@ -144,6 +144,12 @@ struct switchtec_dev {
 	gasptr_t gas_map;
 	size_t gas_map_size;
 
+	void __bar *ep_bar_map;
+	size_t ep_bar_map_size;
+
+	void __csr *ep_csr_map;
+	size_t ep_csr_map_size;
+
 	const struct switchtec_ops *ops;
 };
 

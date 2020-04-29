@@ -22,6 +22,7 @@
  *
  */
 
+#include <sys/mman.h>
 #include <stddef.h>
 #include <errno.h>
 #include <string.h>
@@ -1027,4 +1028,487 @@ int switchtec_clear_gfms_events(struct switchtec_dev *dev)
 		return -1;
 
 	return 0;
+}
+
+int switchtec_device_manage(struct switchtec_dev *dev,
+			    struct switchtec_device_manage_req *req,
+			    struct switchtec_device_manage_rsp *rsp)
+{
+	int ret;
+
+	req->hdr.expected_rsp_len = htole16(req->hdr.expected_rsp_len);
+	req->hdr.pdfid = htole16(req->hdr.pdfid);
+
+	ret = switchtec_cmd(dev, MRPC_DEVICE_MANAGE_CMD,
+			    req, sizeof(struct switchtec_device_manage_req),
+			    rsp, sizeof(struct switchtec_device_manage_rsp));
+
+	rsp->hdr.rsp_len = le16toh(rsp->hdr.rsp_len);
+
+	return ret;
+}
+
+static int ep_csr_read(struct switchtec_dev *dev,
+		       uint16_t pdfid, void *dest,
+		       const void __csr *src, size_t n)
+{
+	int ret;
+	uint16_t csr_addr;
+
+	if (n > SWITCHTEC_EP_CSR_MAX_READ_LEN)
+		n = SWITCHTEC_EP_CSR_MAX_READ_LEN;
+
+	if (!n)
+		return n;
+
+
+	csr_addr = (uint16_t)(src - (void __csr *)dev->ep_csr_map);
+
+	struct ep_cfg_read {
+		uint8_t subcmd;
+		uint8_t reserved0;
+		uint16_t pdfid;
+		uint16_t addr;
+		uint8_t bytes;
+		uint8_t reserved1;
+	} cmd = {
+		.subcmd = 0,
+		.pdfid = pdfid,
+		.addr = htole16(csr_addr),
+		.bytes= n,
+	};
+
+	struct {
+		uint32_t data;
+	} rsp;
+
+	ret = switchtec_cmd(dev, MRPC_EP_RESOURCE_ACCESS, &cmd,
+			    sizeof(cmd), &rsp, 4);
+	if (ret)
+		return -1;
+
+	memcpy(dest, &rsp.data, n);
+	return 0;
+}
+
+static int ep_csr_write(struct switchtec_dev *dev, uint16_t pdfid,
+			void __csr *addr, const void *val, size_t n)
+{
+	int ret;
+	uint16_t csr_addr;
+	csr_addr = (uint16_t)(addr - (void __csr *)dev->ep_csr_map);
+
+	if (n > SWITCHTEC_EP_CSR_MAX_WRITE_LEN)
+		n = SWITCHTEC_EP_CSR_MAX_WRITE_LEN;
+
+	if (!n)
+		return n;
+
+	struct ep_cfg_write {
+		uint8_t subcmd;
+		uint8_t reserved0;
+		uint16_t pdfid;
+		uint16_t addr;
+		uint8_t bytes;
+		uint8_t reserved1;
+		uint32_t data;
+	} cmd = {
+		.subcmd = 1,
+		.pdfid = pdfid,
+		.addr = htole16(csr_addr),
+		.bytes= n,
+	};
+
+	memcpy(&cmd.data, val, n);
+
+	ret = switchtec_cmd(dev, MRPC_EP_RESOURCE_ACCESS, &cmd, sizeof(cmd), NULL, 0);
+	if (ret)
+		return -1;
+
+	return 0;
+}
+
+static size_t ep_bar_read(struct switchtec_dev *dev, uint16_t pdfid,
+			  uint8_t bar, void *dest,
+			  const void __bar *src, size_t n)
+{
+	int ret;
+	uint64_t bar_addr;
+
+	if (n > SWITCHTEC_EP_BAR_MAX_READ_LEN)
+		n = SWITCHTEC_EP_BAR_MAX_READ_LEN;
+
+	if (!n)
+		return n;
+
+	bar_addr = (uint64_t)(src - (void __bar *)dev->ep_bar_map);
+	bar_addr = htole64(bar_addr);
+
+	struct ep_bar_read {
+		uint8_t subcmd;
+		uint8_t reserved0;
+		uint16_t pdfid;
+		uint8_t bar;
+		uint8_t reserved1;
+		uint16_t bytes;
+		uint32_t addr_low;
+		uint32_t addr_high;
+	} cmd = {
+		.subcmd = 2,
+		.pdfid = pdfid,
+		.bar = bar,
+		.addr_low = (uint32_t)bar_addr,
+		.addr_high = (uint32_t)(bar_addr >> 32),
+		.bytes= n,
+	};
+
+	ret = switchtec_cmd(dev, MRPC_EP_RESOURCE_ACCESS, &cmd, sizeof(cmd),
+			    dest, n);
+	if (ret)
+		return -1;
+
+	return 0;
+}
+
+static int ep_bar_write(struct switchtec_dev *dev, uint16_t pdfid,
+			uint8_t bar, void __bar *addr,
+			const void *val, size_t n)
+{
+	int ret;
+	uint64_t bar_addr;
+
+	if (n > SWITCHTEC_EP_BAR_MAX_WRITE_LEN)
+		n = SWITCHTEC_EP_BAR_MAX_WRITE_LEN;
+
+	if (!n)
+		return n;
+
+	bar_addr = (uint64_t)(addr - (void __bar*)dev->ep_bar_map);
+	bar_addr = htole64(bar_addr);
+
+	struct ep_bar_write {
+		uint8_t subcmd;
+		uint8_t reserved0;
+		uint16_t pdfid;
+		uint8_t bar;
+		uint8_t reserved1;
+		uint16_t bytes;
+		uint32_t addr_low;
+		uint32_t addr_high;
+		uint32_t data[128];
+	} cmd = {
+		.subcmd = 3,
+		.pdfid = pdfid,
+		.bar = bar,
+		.bytes= n,
+		.addr_low = (uint32_t)bar_addr,
+		.addr_high = (uint32_t)(bar_addr >> 32),
+	};
+
+	memcpy(&cmd.data, val, n);
+
+	ret = switchtec_cmd(dev, MRPC_EP_RESOURCE_ACCESS, &cmd, sizeof(cmd), NULL, 0);
+	if (ret)
+		return -1;
+
+	return 0;
+}
+
+void __csr * switchtec_ep_csr_map(struct switchtec_dev *dev)
+{
+	void *addr;
+	dev->ep_csr_map_size = 4 << 20;
+
+	/*
+	 * Ensure that if someone tries to do something stupid,
+	 * like dereference the EP BAR directly we fail without
+	 * trashing random memory somewhere. We do this by
+	 * allocating an innaccessible range in the virtual
+	 * address space and use that as the EP BAR address which
+	 * will be subtracted by subsequent operations
+	 */
+
+	addr = mmap(NULL, dev->ep_csr_map_size, PROT_NONE,
+		    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (addr == MAP_FAILED)
+		return (void __csr __force *)-1;
+
+	dev->ep_csr_map = (void __csr __force *)addr;
+
+	return dev->ep_csr_map;
+}
+
+void switchtec_ep_csr_unmap(struct switchtec_dev *dev,
+			    void __csr __force *map)
+{
+	munmap((void __force *)map, dev->ep_csr_map_size);
+}
+
+int switchtec_memcpy_from_ep_csr(struct switchtec_dev *dev,
+				 uint16_t pdfid, void *dest,
+				 const void __csr *src, size_t n)
+{
+	size_t bytes;
+
+	while (n) {
+		bytes = ep_csr_read(dev, pdfid, dest, src, n);
+		if (bytes < 0)
+			return bytes;
+		n -= bytes;
+	}
+
+	return 0;
+}
+
+int switchtec_ep_csr_read8(struct switchtec_dev *dev, uint16_t pdfid,
+			   uint8_t __csr *addr, uint8_t *val)
+{
+	return ep_csr_read(dev, htole16(pdfid), val, addr, 1);
+}
+
+int switchtec_ep_csr_read16(struct switchtec_dev *dev, uint16_t pdfid,
+			    uint16_t __csr *addr, uint16_t *val)
+{
+	int ret;
+
+	ret = ep_csr_read(dev, htole16(pdfid), val, addr, 2);
+	*val = le16toh(*val);
+
+	return ret;
+}
+
+int switchtec_ep_csr_read32(struct switchtec_dev *dev, uint16_t pdfid,
+			    uint32_t __csr *addr, uint32_t *val)
+{
+	int ret;
+
+	ret = ep_csr_read(dev, htole16(pdfid), val, addr, 4);
+	*val = le32toh(*val);
+
+	return ret;
+}
+
+int switchtec_ep_csr_write8(struct switchtec_dev *dev, uint16_t pdfid,
+			    uint8_t val, uint64_t __csr *addr)
+{
+	return ep_csr_write(dev, htole16(pdfid), addr, &val, 1);
+}
+
+int switchtec_ep_csr_write16(struct switchtec_dev *dev, uint16_t pdfid,
+			     uint16_t val, uint64_t __csr *addr)
+{
+	val = htole16(val);
+	return ep_csr_write(dev, htole16(pdfid), addr, &val, 2);
+}
+
+int switchtec_ep_csr_write32(struct switchtec_dev *dev, uint16_t pdfid,
+			     uint32_t val, uint64_t __csr *addr)
+{
+	val = htole32(val);
+	return ep_csr_write(dev, htole16(pdfid), addr, &val, 4);
+}
+
+void __bar * switchtec_ep_bar_map(struct switchtec_dev *dev)
+{
+	void *addr;
+	dev->ep_bar_map_size = 4 << 20;
+
+	/*
+	 * Ensure that if someone tries to do something stupid,
+	 * like dereference the memory directly we fail without
+	 * trashing random memory somewhere. We do this by
+	 * allocating an innaccessible range in the virtual
+	 * address space and use that as the base address which
+	 * will be subtracted by subsequent operations
+	 */
+
+	addr = mmap(NULL, dev->ep_bar_map_size, PROT_NONE,
+		    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (addr == MAP_FAILED)
+		return (void __bar __force *) -1;
+
+	dev->ep_bar_map = (void __bar __force *)addr;
+
+	return dev->ep_bar_map;
+}
+
+void switchtec_ep_bar_unmap(struct switchtec_dev *dev,
+			    void __bar __force *map)
+{
+	munmap((void __force *)map, dev->ep_bar_map_size);
+}
+
+int switchtec_memcpy_from_ep_bar(struct switchtec_dev *dev,
+				 uint16_t pdfid, uint8_t bar, void *dest,
+				 const void __bar *src, size_t n)
+{
+	size_t bytes;
+
+	while (n) {
+		bytes = ep_bar_read(dev, htole16(pdfid), bar, dest, src, n);
+		if (bytes < 0)
+			return -1;
+		n -= bytes;
+	}
+
+	return 0;
+}
+
+int switchtec_ep_bar_read8(struct switchtec_dev *dev, uint16_t pdfid,
+			   uint8_t bar, uint8_t __bar *addr, uint8_t *val)
+{
+	return ep_bar_read(dev, htole16(pdfid), bar, val, addr, 1);
+}
+
+int switchtec_ep_bar_read16(struct switchtec_dev *dev,
+			    uint16_t pdfid, uint8_t bar,
+			    uint16_t __bar *addr, uint16_t *val)
+{
+	int ret;
+
+	ret = ep_bar_read(dev, htole16(pdfid), bar, val, addr, 2);
+	*val = le16toh(*val);
+
+	return ret;
+}
+
+int switchtec_ep_bar_read32(struct switchtec_dev *dev,
+			    uint16_t pdfid, uint8_t bar,
+			    uint32_t __bar *addr, uint32_t *val)
+{
+	int ret;
+
+	ret = ep_bar_read(dev, pdfid, bar, val, addr, 4);
+	*val = le32toh(*val);
+
+	return ret;
+}
+
+int switchtec_ep_bar_read64(struct switchtec_dev *dev,
+			    uint16_t pdfid, uint8_t bar,
+			    uint64_t __bar *addr, uint64_t *val)
+{
+	int ret;
+
+	ret = ep_bar_read(dev, pdfid, bar, val, addr, 8);
+	*val = le64toh(*val);
+
+	return ret;
+}
+
+int switchtec_memcpy_to_ep_bar(struct switchtec_dev *dev,
+			       uint16_t pdfid, uint8_t bar,
+			       void __bar *addr, const void *src,
+			       size_t n)
+{
+	size_t bytes;
+
+	while (n) {
+		bytes = ep_bar_write(dev, htole16(pdfid), bar, addr, src, n);
+		if (bytes < 0)
+			return -1;
+		n -= bytes;
+	}
+
+	return 0;
+}
+
+int switchtec_ep_bar_write8(struct switchtec_dev *dev,
+			    uint16_t pdfid, uint8_t bar,
+			    uint8_t val, uint64_t __bar *addr)
+{
+	return ep_bar_write(dev, htole16(pdfid), bar, addr, &val, 1);
+}
+
+int switchtec_ep_bar_write16(struct switchtec_dev *dev,
+			     uint16_t pdfid, uint8_t bar,
+			     uint16_t val, uint64_t __bar *addr)
+{
+	val = htole16(val);
+	return ep_bar_write(dev, htole16(pdfid), bar, addr, &val, 2);
+}
+
+int switchtec_ep_bar_write32(struct switchtec_dev *dev,
+			     uint16_t pdfid, uint8_t bar,
+			     uint32_t val, uint64_t __bar *addr)
+{
+	val = htole32(val);
+	return ep_bar_write(dev, htole16(pdfid), bar, addr, &val, 4);
+}
+
+int switchtec_ep_bar_write64(struct switchtec_dev *dev,
+			     uint16_t pdfid, uint8_t bar,
+			     uint64_t val, uint64_t __bar *addr)
+{
+	val = htole64(val);
+	return ep_bar_write(dev, htole16(pdfid), bar, addr, &val, 8);
+}
+
+int switchtec_ep_tunnel_config(struct switchtec_dev *dev, uint16_t subcmd,
+			       uint16_t pdfid, uint16_t expected_rsp_len,
+			       uint8_t *meta_data, uint16_t meta_data_len,
+			       uint8_t *rsp_data)
+{
+	int ret;
+	size_t payload_len;
+
+	struct cfg_req {
+		uint16_t subcmd;
+		uint16_t pdfid;
+		uint16_t expected_rsp_len;
+		uint16_t meta_data_len;
+		uint8_t meta_data[MRPC_MAX_DATA_LEN - 8];
+	} req = {
+		.subcmd = htole16(subcmd),
+		.pdfid = htole16(pdfid),
+		.expected_rsp_len = htole16(expected_rsp_len),
+	};
+
+	struct cfg_rsp {
+		uint32_t len;
+		uint8_t data[MRPC_MAX_DATA_LEN - 4];
+	} rsp;
+
+	if (meta_data_len > sizeof(req.meta_data))
+		return -1;
+
+	req.meta_data_len = htole16(meta_data_len);
+
+	if (meta_data_len)
+		memcpy(req.meta_data, meta_data, meta_data_len);
+
+	payload_len = offsetof(struct cfg_req, meta_data) + meta_data_len;
+
+	ret = switchtec_cmd(dev, MRPC_EP_TUNNEL_CFG, &req,
+			    payload_len, &rsp, sizeof(rsp));
+
+	if (ret)
+		return -errno;
+
+	rsp.len = le32toh(rsp.len);
+
+	if (rsp_data && rsp.len)
+		memcpy(rsp_data, rsp.data, rsp.len);
+
+	return 0;
+}
+
+int switchtec_ep_tunnel_enable(struct switchtec_dev *dev, uint16_t pdfid)
+{
+	return switchtec_ep_tunnel_config(dev, MRPC_EP_TUNNEL_ENABLE,
+					  pdfid, 0, NULL, 0, NULL);
+}
+
+int switchtec_ep_tunnel_disable(struct switchtec_dev *dev, uint16_t pdfid)
+{
+	return switchtec_ep_tunnel_config(dev, MRPC_EP_TUNNEL_DISABLE,
+					  pdfid, 0, NULL, 0, NULL);
+}
+
+int switchtec_ep_tunnel_status(struct switchtec_dev *dev, uint16_t pdfid,
+			       uint32_t *status)
+{
+	return switchtec_ep_tunnel_config(dev, MRPC_EP_TUNNEL_STATUS,
+					  pdfid, sizeof(*status), NULL,
+					  0, (uint8_t *)status);
 }
