@@ -46,6 +46,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef __linux__
+
 static const struct argconfig_choice recovery_mode_choices[] = {
 	{"I2C", SWITCHTEC_BL2_RECOVERY_I2C, "I2C"},
 	{"XMODEM", SWITCHTEC_BL2_RECOVERY_XMODEM, "XModem"},
@@ -1250,3 +1252,5 @@ static struct subcommand subcmd = {
 };
 
 REGISTER_SUBCMD(subcmd);
+
+#endif // __linux__

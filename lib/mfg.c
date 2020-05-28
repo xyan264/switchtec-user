@@ -59,6 +59,8 @@
 #include "lib/crc.h"
 #include "config.h"
 
+#ifdef __linux__
+
 #if HAVE_LIBCRYPTO
 #include <openssl/pem.h>
 #endif
@@ -105,6 +107,8 @@ static void RSA_get0_key(const RSA *r, const BIGNUM **n,
 }
 #endif
 
+#endif // __linux__
+
 static int switchtec_mfg_cmd(struct switchtec_dev *dev, uint32_t cmd,
 			     const void *payload, size_t payload_len,
 			     void *resp, size_t resp_len)
@@ -143,6 +147,7 @@ int switchtec_sn_ver_get(struct switchtec_dev *dev,
 	return 0;
 }
 
+#ifdef __linux__
 /**
  * @brief Get secure boot configurations
  * @param[in]  dev	Switchtec device handle
@@ -808,5 +813,7 @@ switchtec_security_state_has_kmsk(struct switchtec_security_cfg_state *state,
 
 	return 0;
 }
+
+#endif // __linux__
 
 /**@}*/
