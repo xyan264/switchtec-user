@@ -263,6 +263,7 @@ struct switchtec_dev *switchtec_open(const char *device)
 	errno = ENODEV;
 	return NULL;
 
+
 found:
 	if (!ret) {
 		errno = ENODEV;
