@@ -1445,7 +1445,10 @@ static int fw_update(int argc, char **argv)
 		int dont_activate;
 		int force;
 		int set_boot_rw;
-	} cfg = {};
+		unsigned char retries;
+	} cfg = {
+		.retries = 1,
+	};
 	const struct argconfig_options opts[] = {
 		DEVICE_OPTION,
 		{"img_file", .cfg_type=CFG_FILE_R, .value_addr=&cfg.fimg,
@@ -1461,6 +1464,8 @@ static int fw_update(int argc, char **argv)
 		 "firmware is stuck in a busy state"},
 		{"set-boot-rw", 'W', "", CFG_NONE, &cfg.set_boot_rw, no_argument,
 		 "set the bootloader and map partition as RW (only valid for BOOT and MAP images)"},
+		{"retries", 'R', "", CFG_BYTE, &cfg.retries, required_argument,
+		 "specify the number of download retries"},
 		{NULL}};
 
 	argconfig_parse(argc, argv, desc, opts, &cfg, sizeof(cfg));
@@ -1517,19 +1522,31 @@ static int fw_update(int argc, char **argv)
 		}
 	}
 
-	progress_start();
-	ret = switchtec_fw_write_file(cfg.dev, cfg.fimg, cfg.dont_activate,
-				      cfg.force, progress_update);
-	fclose(cfg.fimg);
+	while (cfg.retries > 0) {
+		fseek(cfg.fimg, 0, SEEK_SET);
+		cfg.retries--;
+		progress_start();
+		ret = switchtec_fw_write_file(cfg.dev, cfg.fimg,
+					      cfg.dont_activate, cfg.force,
+					      progress_update);
+		if (ret) {
+			printf("\n");
+			switchtec_fw_perror("firmware update", ret);
+			if (cfg.retries == 0) {
+				fclose(cfg.fimg);
+				goto set_boot_ro;
+			} else {
+				cfg.force = 1;
+				continue;
+			}
+		}
 
-	if (ret) {
+		progress_finish();
 		printf("\n");
-		switchtec_fw_perror("firmware update", ret);
-		goto set_boot_ro;
+		fclose(cfg.fimg);
+		break;
 	}
 
-	progress_finish();
-	printf("\n");
 
 	print_fw_part_info(cfg.dev);
 	printf("\n");
