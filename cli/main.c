@@ -1537,6 +1537,7 @@ static int fw_update(int argc, char **argv)
 				goto set_boot_ro;
 			} else {
 				cfg.force = 1;
+				sleep(5);
 				continue;
 			}
 		}
