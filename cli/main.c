@@ -44,6 +44,8 @@
 static struct switchtec_dev *global_dev = NULL;
 static int global_pax_id = SWITCHTEC_PAX_ID_LOCAL;
 
+static const char *dev_path;
+
 static const struct argconfig_choice bandwidth_types[] = {
 	{"RAW", SWITCHTEC_BW_TYPE_RAW, "get the raw bandwidth"},
 	{"PAYLOAD", SWITCHTEC_BW_TYPE_PAYLOAD, "get the payload bandwidth"},
@@ -63,6 +65,7 @@ int switchtec_handler(const char *optarg, void *value_addr,
 {
 	struct switchtec_dev *dev;
 
+	dev_path = optarg;
 	global_dev = dev = switchtec_open(optarg);
 
 	if (dev == NULL) {
@@ -88,6 +91,17 @@ int switchtec_handler(const char *optarg, void *value_addr,
 	}
 
 	return 0;
+}
+
+struct switchtec_dev* switchtec_reopen(struct switchtec_dev *dev)
+{
+	switchtec_close(dev);
+	global_dev = dev = switchtec_open(dev_path);
+	if (set_global_pax_id()) {
+		fprintf(stderr, "%s: Setting PAX ID is not supported.\n", dev_path);
+	}
+
+	return dev;
 }
 
 /*
@@ -1524,6 +1538,7 @@ static int fw_update(int argc, char **argv)
 
 	while (cfg.retries > 0) {
 		fseek(cfg.fimg, 0, SEEK_SET);
+		cfg.dev = switchtec_reopen(cfg.dev);
 		cfg.retries--;
 		progress_start();
 		ret = switchtec_fw_write_file(cfg.dev, cfg.fimg,
