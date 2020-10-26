@@ -1047,6 +1047,119 @@ int switchtec_device_manage(struct switchtec_dev *dev,
 	return ret;
 }
 
+static int admin_passthru_start(struct switchtec_dev *dev,
+				struct switchtec_adm_passthru_req *req,
+				struct switchtec_adm_passthru_rsp *rsp)
+{
+	int ret;
+	int copy_len;
+	struct {
+		uint8_t subcmd;
+		uint8_t rsvd[3];
+		uint16_t pdfid;
+		uint16_t expected_rsp_len;
+		uint8_t data[MRPC_MAX_DATA_LEN - 8];
+	} cmd = {};
+
+	struct {
+		uint8_t subcmd;
+		uint8_t rsvd[3];
+		uint16_t rsp_len;
+		uint16_t rsvd1;
+	} reply = {};
+
+	copy_len = req->data_len > sizeof(cmd.data)?
+			sizeof(cmd.data): req->data_len;
+	cmd.subcmd = MRPC_ADM_PASSTHRU_START;
+	cmd.pdfid = htole16(req->pdfid);
+	cmd.expected_rsp_len = htole16(req->expected_rsp_len);
+	memcpy(cmd.data, req->cmd_data, copy_len);
+
+	ret = switchtec_cmd(dev, MRPC_ADM_PASSTHRU_CMD,
+			    &cmd, sizeof(cmd), &reply, sizeof(reply));
+	if (ret)
+		return ret;
+
+	rsp->rsp_len = le16toh(reply.rsp_len);
+	return 0;
+}
+
+static int admin_passthru_data(struct switchtec_dev *dev,
+			       struct switchtec_adm_passthru_req *req,
+			       struct switchtec_adm_passthru_rsp *rsp)
+{
+	int offset = 0;
+	int ret;
+	struct {
+		uint8_t subcmd;
+		uint8_t rsvd[3];
+		uint16_t pdfid;
+		uint16_t offset;
+	} cmd = {};
+
+	struct {
+		uint8_t subcmd;
+		uint8_t rsvd[3];
+		uint16_t offset;
+		uint16_t len;
+		uint8_t data[MRPC_MAX_DATA_LEN - 8];
+	} reply = {};
+
+	while (offset < rsp->rsp_len) {
+		cmd.subcmd = MRPC_ADM_PASSTHRU_DATA;
+		cmd.pdfid = htole16(req->pdfid);
+		cmd.offset = htole16(offset);
+
+		ret = switchtec_cmd(dev, MRPC_ADM_PASSTHRU_CMD,
+				&cmd, sizeof(cmd), &reply, sizeof(reply));
+		if (ret)
+			return ret;
+
+		memcpy(rsp->rsp_data + offset, reply.data, htole16(reply.len));
+		offset += htole16(reply.len);
+	}
+
+	return 0;
+}
+
+static int admin_passthru_end(struct switchtec_dev *dev,
+			      struct switchtec_adm_passthru_req *req)
+{
+	struct {
+		uint8_t subcmd;
+		uint8_t rsvd[3];
+		uint16_t pdfid;
+		uint16_t rsvd1;
+	} cmd = {};
+
+	cmd.subcmd = MRPC_ADM_PASSTHRU_END;
+	cmd.pdfid = htole16(req->pdfid);
+
+	return switchtec_cmd(dev, MRPC_ADM_PASSTHRU_CMD,
+			     &cmd, sizeof(cmd), NULL, 0);
+}
+
+int switchtec_adm_passthru(struct switchtec_dev *dev,
+			   struct switchtec_adm_passthru_req *req,
+			   struct switchtec_adm_passthru_rsp *rsp)
+{
+	int ret;
+
+	ret = admin_passthru_start(dev, req, rsp);
+	if (ret)
+		return ret;
+
+	if (rsp->rsp_len) {
+		ret = admin_passthru_data(dev, req, rsp);
+		if (ret)
+			return ret;
+	}
+
+	ret = admin_passthru_end(dev, req);
+
+	return ret;
+}
+
 int switchtec_ep_tunnel_config(struct switchtec_dev *dev, uint16_t subcmd,
 			       uint16_t pdfid, uint16_t expected_rsp_len,
 			       uint8_t *meta_data, uint16_t meta_data_len,

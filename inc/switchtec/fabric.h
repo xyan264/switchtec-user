@@ -622,6 +622,7 @@ int switchtec_clear_gfms_events(struct switchtec_dev *dev);
 
 /********** DEVICE MANAGE *********/
 #define SWITCHTEC_DEVICE_MANAGE_MAX_RESP 1016
+#define SWITCHTEC_ADM_PASSTHRU_MAX_RESP (4096 + 128)
 
 struct switchtec_device_manage_req_hdr {
 	uint16_t pdfid;
@@ -644,9 +645,27 @@ struct switchtec_device_manage_rsp {
 	uint8_t rsp_data[SWITCHTEC_DEVICE_MANAGE_MAX_RESP];
 };
 
+struct switchtec_adm_passthru_req {
+	uint16_t pdfid;
+	uint16_t data_len;
+	uint16_t expected_rsp_len;
+	uint16_t rsvd;
+	uint8_t cmd_data[MRPC_MAX_DATA_LEN - 8];
+};
+
+struct switchtec_adm_passthru_rsp {
+	uint16_t rsp_len;
+	uint16_t rsvd;
+	uint8_t rsp_data[SWITCHTEC_ADM_PASSTHRU_MAX_RESP];
+};
+
 int switchtec_device_manage(struct switchtec_dev *dev,
 			    struct switchtec_device_manage_req *req,
 			    struct switchtec_device_manage_rsp *rsp);
+
+int switchtec_adm_passthru(struct switchtec_dev *dev,
+			   struct switchtec_adm_passthru_req *req,
+			   struct switchtec_adm_passthru_rsp *rsp);
 
 /********** EP TUNNEL MANAGEMENT *********/
 enum switchtec_ep_tunnel_status{
