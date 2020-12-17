@@ -90,6 +90,8 @@ enum mrpc_cmd {
 	MRPC_SN_VER_GET = 265,
 	MRPC_DBG_UNLOCK = 266,
 	MRPC_BOOTUP_RESUME = 267,
+	MRPC_SECURITY_CFG_GET_V2 = 268,
+	MRPC_SECURITY_CFG_SET_V2 = 269,
 };
 
 enum mrpc_bg_status {

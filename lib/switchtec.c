@@ -1291,6 +1291,9 @@ static enum switchtec_gen map_to_gen(uint32_t gen)
 	case 0:
 		ret = SWITCHTEC_GEN4;
 		break;
+	case 1:
+		ret = SWITCHTEC_GEN5;
+		break;
 	default:
 		ret = SWITCHTEC_GEN_UNKNOWN;
 		break;
@@ -1362,11 +1365,6 @@ float switchtec_die_temp(struct switchtec_dev *dev)
 	int ret;
 	uint32_t sub_cmd_id;
 	uint32_t temp;
-
-	if (!switchtec_is_gen3(dev) && !switchtec_is_gen4(dev)) {
-		errno = ENOTSUP;
-		return -100.0;
-	}
 
 	if (switchtec_is_gen3(dev)) {
 		sub_cmd_id = MRPC_DIETEMP_SET_MEAS;

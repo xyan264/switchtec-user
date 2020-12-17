@@ -69,6 +69,11 @@ static char *spi_rate_str[] = {
 	"25", "22.22", "20", "18.18"
 };
 
+static char *spi_hi_rate_str[] = {
+	"120", "80", "60", "48", "40", "34",
+	"30", "26.67", "24", "21.82"
+};
+
 static const char* phase_id_to_string(enum switchtec_boot_phase phase_id)
 {
 	switch(phase_id) {
@@ -88,6 +93,8 @@ static const char* phase_id_to_string(enum switchtec_boot_phase phase_id)
 static int ping(int argc, char **argv)
 {
 	int ret;
+	enum switchtec_gen gen;
+	enum switchtec_rev revision;
 	enum switchtec_boot_phase phase_id;
 	static struct {
 		struct switchtec_dev *dev;
@@ -97,9 +104,12 @@ static int ping(int argc, char **argv)
 		{NULL}
 	};
 
+	static char *genstr[] = {"GEN3", "GEN4", "GEN5"};
+	static char *revstr[] = {"REVB", "REVC", "REVD"};
+
 	argconfig_parse(argc, argv, CMD_DESC_PING, opts, &cfg, sizeof(cfg));
 
-	ret = switchtec_get_device_info(cfg.dev, &phase_id, NULL, NULL);
+	ret = switchtec_get_device_info(cfg.dev, &phase_id, &gen, &revision);
 	if (ret) {
 		switchtec_perror("mfg ping");
 		return ret;
@@ -107,6 +117,11 @@ static int ping(int argc, char **argv)
 
 	printf("Mfg Ping: \t\tSUCCESS\n");
 	printf("Current Boot Phase: \t%s\n", phase_id_to_string(phase_id));
+	printf("Device GEN: \t\t%s\n", genstr[gen]);
+	if(revision != 0xF)
+		printf("Device REV: \t\t%s\n", revstr[revision]);
+	else
+		printf("Device REV: \t\tREVA\n");
 
 	return 0;
 }
@@ -128,6 +143,7 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 {
 	int key_idx;
 	int i;
+	static char *statusstr[] = {"UNKNOW", "RW", "UNKNOW", "RO"};
 
 	printf("\nBasic Secure Settings %s\n",
 		state->basic_setting_valid? "(Valid)":"(Invalid)");
@@ -176,13 +192,19 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 	printf("\tJTAG/EJTAG Unlock AFTER BL1: \t%d\n",
 		state->jtag_post_bl1_unlock_allowed);
 
-	printf("\tSPI Clock Rate: \t\t%s MHz\n",
-		spi_rate_str[state->spi_clk_rate-1]);
+	if (state->spi_core_clk) {
+		printf("\tSPI Clock Rate: \t\t%s MHz\n",
+		       spi_hi_rate_str[state->spi_clk_rate-1]);
+	} else {
+		printf("\tSPI Clock Rate: \t\t%s MHz\n",
+		       spi_rate_str[state->spi_clk_rate-1]);
+	}
 
 	printf("\tI2C Recovery TMO: \t\t%d Second(s)\n",
 		state->i2c_recovery_tmo);
 	printf("\tI2C Port: \t\t\t%d\n", state->i2c_port);
-	printf("\tI2C Address (7-bits): \t\t0x%02x\n", state->i2c_addr);
+	printf("\tI2C Address: \t\t\t0x%02x (8-bit) or 0x%02x (7-bit)\n",
+	       state->i2c_addr, (state->i2c_addr >> 1));
 	printf("\tI2C Command Map: \t\t0x%08x\n\n", state->i2c_cmd_map);
 
 	printf("Exponent Hex Data %s: \t\t0x%08x\n",
@@ -228,9 +250,36 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 			       program_status_to_string(otp->kmsk[i]));
 		}
 	}
+
+	printf("\neFuse Region Access Status: \t\n");
+
+	printf("\tBasic setting Region: \t\t%s\n",
+	       statusstr[state->basic_setting_ro]);
+
+	printf("\tKMSK Index, Key Manifest/BL2 Secure Version Region: \t%s\n",
+	       statusstr[state->mixed_version_ro]);
+
+	printf("\tMain FW Secure Version Region: \t%s\n",
+	       statusstr[state->main_fw_version_ro]);
+
+	printf("\tSecure Unlock Version Region: \t%s\n",
+	       statusstr[state->suv_version_ro]);
+
+	printf("\tKMSK Entry 0 Region: \t\t%s\n",
+	       statusstr[state->kmsk_entry0_ro]);
+
+	printf("\tKMSK Entry 1 Region: \t\t%s\n",
+	       statusstr[state->kmsk_entry1_ro]);
+
+	printf("\tKMSK Entry 2 Region: \t\t%s\n",
+	       statusstr[state->kmsk_entry2_ro]);
+
+	printf("\tKMSK Entry 3 Region: \t\t%s\n",
+	       statusstr[state->kmsk_entry3_ro]);
 }
 
-static void print_security_cfg_set(struct switchtec_security_cfg_set *set)
+static void print_security_cfg_set(struct switchtec_security_cfg_set *set,
+				   struct switchtec_security_cfg_state *state)
 {
 	printf("\nBasic Secure Settings\n");
 
@@ -246,14 +295,20 @@ static void print_security_cfg_set(struct switchtec_security_cfg_set *set)
 	printf("\tJTAG/EJTAG Unlock AFTER BL1: \t%d\n",
 		set->jtag_post_bl1_unlock_allowed);
 
-	printf("\tSPI Clock Rate: \t\t%s MHz\n",
-		spi_rate_str[set->spi_clk_rate-1]);
+	if(state->spi_core_clk) {
+		printf("\tSPI Clock Rate: \t\t%s MHz\n",
+			spi_hi_rate_str[set->spi_clk_rate-1]);
+	} else {
+		printf("\tSPI Clock Rate: \t\t%s MHz\n",
+			spi_rate_str[set->spi_clk_rate-1]);
+	}
 
 	printf("\tI2C Recovery TMO: \t\t%d Second(s)\n",
 		set->i2c_recovery_tmo);
 
 	printf("\tI2C Port: \t\t\t%d\n", set->i2c_port);
-	printf("\tI2C Address (7-bits): \t\t0x%02x\n", set->i2c_addr);
+	printf("\tI2C Address: \t\t\t0x%02x (8-bit) or 0x%02x (7-bit)\n",
+	       set->i2c_addr, (set->i2c_addr >> 1));
 	printf("\tI2C Command Map: \t\t0x%08x\n", set->i2c_cmd_map);
 
 	printf("Exponent Hex Data: \t\t\t0x%08x\n", set->public_key_exponent);
@@ -793,6 +848,7 @@ static int config_set(int argc, char **argv)
 	int ret;
 	struct switchtec_security_cfg_state state = {};
 	struct switchtec_security_cfg_set settings = {};
+	struct switchtec_security_cfg_finfo finfo = {};
 
 	static struct {
 		struct switchtec_dev *dev;
@@ -830,7 +886,7 @@ static int config_set(int argc, char **argv)
 		return -2;
 	}
 
-	ret = switchtec_read_sec_cfg_file(cfg.setting_fimg, &settings);
+	ret = switchtec_read_sec_cfg_file(cfg.setting_fimg, &finfo, &settings);
 	fclose(cfg.setting_fimg);
 	if (ret) {
 		fprintf(stderr, "Invalid secure setting file: %s!\n",
@@ -838,8 +894,13 @@ static int config_set(int argc, char **argv)
 		return -3;
 	}
 
+	if (finfo.gen != switchtec_gen(cfg.dev)) {
+		fprintf(stderr, "The security setting file is intended for a different generation of Switchtec device!\n");
+		return -3;
+	}
+
 	printf("Writing the below settings to device: \n");
-	print_security_cfg_set(&settings);
+	print_security_cfg_set(&settings, &state);
 
 	if (!cfg.assume_yes)
 		fprintf(stderr,

@@ -72,6 +72,20 @@ struct switchtec_security_cfg_state {
 	uint8_t public_key_ver_valid;
 	uint8_t public_key_valid;
 
+	/*
+	* eFuse region access status
+	* bit 0 indicates the status is valid (1) or not (0)
+	* bit 1 indicates the status is RO(1) or Masked (1), or RW (0)
+	*/
+	uint8_t basic_setting_ro;
+	uint8_t mixed_version_ro;
+	uint8_t main_fw_version_ro;
+	uint8_t suv_version_ro;
+	uint8_t kmsk_entry0_ro;
+	uint8_t kmsk_entry1_ro;
+	uint8_t kmsk_entry2_ro;
+	uint8_t kmsk_entry3_ro;
+
 	enum switchtec_debug_mode debug_mode;
 	enum switchtec_secure_state secure_state;
 
@@ -88,6 +102,7 @@ struct switchtec_security_cfg_state {
 	uint32_t public_key_exponent;
 	uint32_t public_key_num;
 	uint32_t public_key_ver;
+	uint32_t spi_core_clk;
 
 	uint8_t public_key[SWITCHTEC_KMSK_NUM][SWITCHTEC_KMSK_LEN];
 };
@@ -134,6 +149,11 @@ struct switchtec_security_cfg_set {
 	uint32_t i2c_addr;
 	uint32_t i2c_cmd_map;
 	uint32_t public_key_exponent;
+};
+
+struct switchtec_security_cfg_finfo {
+	uint8_t version;
+	enum switchtec_gen gen;
 };
 
 enum switchtec_active_index_id {
@@ -200,6 +220,7 @@ int switchtec_dbg_unlock_version_update(struct switchtec_dev *dev,
 					struct switchtec_pubkey *public_key,
 			 		struct switchtec_signature *signature);
 int switchtec_read_sec_cfg_file(FILE *setting_file,
+				struct switchtec_security_cfg_finfo *finfo,
 			        struct switchtec_security_cfg_set *set);
 int switchtec_read_pubk_file(FILE *pubk_file, struct switchtec_pubkey *pubk);
 int switchtec_read_kmsk_file(FILE *kmsk_file, struct switchtec_kmsk *kmsk);

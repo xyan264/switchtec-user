@@ -83,6 +83,7 @@ typedef __gas struct switchtec_gas *gasptr_t;
 enum switchtec_gen {
 	SWITCHTEC_GEN3,
 	SWITCHTEC_GEN4,
+	SWITCHTEC_GEN5,
 	SWITCHTEC_GEN_UNKNOWN,
 };
 
