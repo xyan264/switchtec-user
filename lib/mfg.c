@@ -128,6 +128,27 @@ static void get_i2c_operands(enum switchtec_gen gen, uint32_t *addr_mask,
 	}
 }
 
+static void parse_otp_settings(struct switchtec_security_cfg_otp_region *otp,
+			       uint32_t flags)
+{
+	otp->basic_valid = !!(flags & BIT(5));
+	otp->basic = !!(flags & BIT(6));
+	otp->mixed_ver_valid = !!(flags & BIT(7));
+	otp->mixed_ver = !!(flags & BIT(8));
+	otp->main_fw_ver_valid = !!(flags & BIT(9));
+	otp->main_fw_ver = !!(flags & BIT(10));
+	otp->sec_unlock_ver_valid = !!(flags & BIT(11));
+	otp->sec_unlock_ver = !!(flags & BIT(12));
+	otp->kmsk_valid[0] = !!(flags & BIT(13));
+	otp->kmsk[0] = !!(flags & BIT(14));
+	otp->kmsk_valid[1] = !!(flags & BIT(15));
+	otp->kmsk[1] = !!(flags & BIT(16));
+	otp->kmsk_valid[2] = !!(flags & BIT(17));
+	otp->kmsk[2] = !!(flags & BIT(18));
+	otp->kmsk_valid[3] = !!(flags & BIT(19));
+	otp->kmsk[3] = !!(flags & BIT(20));
+}
+
 static int secure_config_get(struct switchtec_dev *dev,
 			     struct switchtec_security_cfg_state *state,
 			     struct switchtec_security_cfg_otp_region *otp,
@@ -162,22 +183,7 @@ static int secure_config_get(struct switchtec_dev *dev,
 
 	if (!ret) {
 		if (otp) {
-			otp->basic_valid = !!(reply.valid & BIT(5));
-			otp->basic = !!(reply.valid & BIT(6));
-			otp->mixed_ver_valid = !!(reply.valid & BIT(7));
-			otp->mixed_ver = !!(reply.valid & BIT(8));
-			otp->main_fw_ver_valid = !!(reply.valid & BIT(9));
-			otp->main_fw_ver = !!(reply.valid & BIT(10));
-			otp->sec_unlock_ver_valid = !!(reply.valid & BIT(11));
-			otp->sec_unlock_ver = !!(reply.valid & BIT(12));
-			otp->kmsk_valid[0] = !!(reply.valid & BIT(13));
-			otp->kmsk[0] = !!(reply.valid & BIT(14));
-			otp->kmsk_valid[1] = !!(reply.valid & BIT(15));
-			otp->kmsk[1] = !!(reply.valid & BIT(16));
-			otp->kmsk_valid[2] = !!(reply.valid & BIT(17));
-			otp->kmsk[2] = !!(reply.valid & BIT(18));
-			otp->kmsk_valid[3] = !!(reply.valid & BIT(19));
-			otp->kmsk[3] = !!(reply.valid & BIT(20));
+			parse_otp_settings(otp, reply.valid);
 
 			if (otp_valid)
 				*otp_valid = true;
@@ -208,14 +214,11 @@ static int secure_config_get(struct switchtec_dev *dev,
 	state->public_key_ver_valid = !!(reply.valid & 0x08);
 	state->public_key_valid = !!(reply.valid & 0x10);
 
-	state->basic_setting_ro = (reply.valid & 0x60) >> 5;
-	state->mixed_version_ro = (reply.valid & 0x180) >> 7;
-	state->main_fw_version_ro = (reply.valid & 0x600) >> 9;
-	state->suv_version_ro = (reply.valid & 0x1800) >> 11;
-	state->kmsk_entry0_ro = (reply.valid & 0x6000) >> 13;
-	state->kmsk_entry1_ro = (reply.valid & 0x18000) >> 15;
-	state->kmsk_entry2_ro = (reply.valid & 0x60000) >> 17;
-	state->kmsk_entry3_ro = (reply.valid & 0x180000) >> 19;
+	if (otp && switchtec_gen(dev) == SWITCHTEC_GEN5) {
+		parse_otp_settings(otp, reply.valid);
+		if (otp_valid)
+				*otp_valid = true;
+	}
 
 	state->debug_mode = reply.cfg & 0x03;
 	state->secure_state = (reply.cfg>>2) & 0x03;

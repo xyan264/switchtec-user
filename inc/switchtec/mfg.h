@@ -72,20 +72,6 @@ struct switchtec_security_cfg_state {
 	uint8_t public_key_ver_valid;
 	uint8_t public_key_valid;
 
-	/*
-	* eFuse region access status
-	* bit 0 indicates the status is valid (1) or not (0)
-	* bit 1 indicates the status is RO(1) or Masked (1), or RW (0)
-	*/
-	uint8_t basic_setting_ro;
-	uint8_t mixed_version_ro;
-	uint8_t main_fw_version_ro;
-	uint8_t suv_version_ro;
-	uint8_t kmsk_entry0_ro;
-	uint8_t kmsk_entry1_ro;
-	uint8_t kmsk_entry2_ro;
-	uint8_t kmsk_entry3_ro;
-
 	enum switchtec_debug_mode debug_mode;
 	enum switchtec_secure_state secure_state;
 

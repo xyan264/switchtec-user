@@ -135,7 +135,6 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 {
 	int key_idx;
 	int i;
-	static char *statusstr[] = {"UNKNOW", "RW", "UNKNOW", "RO"};
 
 	printf("\nBasic Secure Settings %s\n",
 		state->basic_setting_valid? "(Valid)":"(Invalid)");
@@ -242,32 +241,6 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 			       program_status_to_string(otp->kmsk[i]));
 		}
 	}
-
-	printf("\neFuse Region Access Status: \t\n");
-
-	printf("\tBasic setting Region: \t\t%s\n",
-	       statusstr[state->basic_setting_ro]);
-
-	printf("\tKMSK Index, Key Manifest/BL2 Secure Version Region: \t%s\n",
-	       statusstr[state->mixed_version_ro]);
-
-	printf("\tMain FW Secure Version Region: \t%s\n",
-	       statusstr[state->main_fw_version_ro]);
-
-	printf("\tSecure Unlock Version Region: \t%s\n",
-	       statusstr[state->suv_version_ro]);
-
-	printf("\tKMSK Entry 0 Region: \t\t%s\n",
-	       statusstr[state->kmsk_entry0_ro]);
-
-	printf("\tKMSK Entry 1 Region: \t\t%s\n",
-	       statusstr[state->kmsk_entry1_ro]);
-
-	printf("\tKMSK Entry 2 Region: \t\t%s\n",
-	       statusstr[state->kmsk_entry2_ro]);
-
-	printf("\tKMSK Entry 3 Region: \t\t%s\n",
-	       statusstr[state->kmsk_entry3_ro]);
 }
 
 static void print_security_cfg_set(struct switchtec_security_cfg_set *set,
@@ -360,7 +333,8 @@ static int info(int argc, char **argv)
 			print_security_config(&ext_state.state, NULL);
 			fprintf(stderr,
 				"\nAdditional (verbose) chip info is not available on this chip!\n\n");
-		} else if (phase_id != SWITCHTEC_BOOT_PHASE_FW) {
+		} else if (switchtec_gen(cfg.dev) == SWITCHTEC_GEN4 &&
+			   phase_id != SWITCHTEC_BOOT_PHASE_FW) {
 			print_security_config(&ext_state.state, NULL);
 			fprintf(stderr,
 				"\nAdditional (verbose) chip info is only available in the Main Firmware phase!\n\n");
