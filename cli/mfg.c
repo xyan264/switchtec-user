@@ -104,9 +104,6 @@ static int ping(int argc, char **argv)
 		{NULL}
 	};
 
-	static char *genstr[] = {"GEN3", "GEN4", "GEN5"};
-	static char *revstr[] = {"REVB", "REVC", "REVD"};
-
 	argconfig_parse(argc, argv, CMD_DESC_PING, opts, &cfg, sizeof(cfg));
 
 	ret = switchtec_get_device_info(cfg.dev, &phase_id, &gen, &revision);
@@ -117,11 +114,6 @@ static int ping(int argc, char **argv)
 
 	printf("Mfg Ping: \t\tSUCCESS\n");
 	printf("Current Boot Phase: \t%s\n", phase_id_to_string(phase_id));
-	printf("Device GEN: \t\t%s\n", genstr[gen]);
-	if(revision != 0xF)
-		printf("Device REV: \t\t%s\n", revstr[revision]);
-	else
-		printf("Device REV: \t\tREVA\n");
 
 	return 0;
 }
