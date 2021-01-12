@@ -664,7 +664,17 @@ int switchtec_read_sec_cfg_file(FILE *setting_file,
 		return -EBADF;
 
 	finfo->version = file_data.header.version;
-	finfo->gen = file_data.header.hw_gen? SWITCHTEC_GEN5 : SWITCHTEC_GEN4;
+
+	switch (file_data.header.hw_gen) {
+	case 0:
+		finfo->gen = file_data.header.hw_gen = SWITCHTEC_GEN4;
+		break;
+	case 1:
+		finfo->gen = file_data.header.hw_gen = SWITCHTEC_GEN5;
+		break;
+	default:
+		return -EBADF;	
+	}
 
 	memset(set, 0, sizeof(struct switchtec_security_cfg_set));
 
