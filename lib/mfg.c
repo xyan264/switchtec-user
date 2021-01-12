@@ -633,7 +633,7 @@ int switchtec_read_sec_cfg_file(FILE *setting_file,
 	struct setting_file_header {
 		uint8_t magic[4];
 		uint32_t version;
-		uint8_t hw_info;
+		uint8_t hw_gen;
 		uint8_t rsvd[3];
 		uint32_t crc;
 	};
@@ -660,12 +660,12 @@ int switchtec_read_sec_cfg_file(FILE *setting_file,
 
 	crc = crc32((uint8_t*)&file_data.data,
 			sizeof(file_data.data), 0, 1, 1);
-//	if (crc != le32toh(file_data.header.crc))
-//		return -EBADF;
+	if (crc != le32toh(file_data.header.crc))
+		return -EBADF;
 
 	finfo->version = file_data.header.version;
-	finfo->gen = file_data.header.hw_info? SWITCHTEC_GEN5 : SWITCHTEC_GEN4;
-finfo->gen = SWITCHTEC_GEN5;
+	finfo->gen = file_data.header.hw_gen? SWITCHTEC_GEN5 : SWITCHTEC_GEN4;
+
 	memset(set, 0, sizeof(struct switchtec_security_cfg_set));
 
 	file_data.data.cfg = le64toh(file_data.data.cfg);
