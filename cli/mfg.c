@@ -1085,7 +1085,7 @@ static int debug_unlock(int argc, char **argv)
 	if (cfg.serial == 0) {
 		fprintf(stderr,
 			"Serial number must be set for this command!\n");
-		return -1;
+		//return -1;
 	}
 
 	if (cfg.unlock_version == 0xffff) {
@@ -1182,7 +1182,7 @@ static int debug_lock_update(int argc, char **argv)
 	if (cfg.serial == 0) {
 		fprintf(stderr,
 			"Serial number must be set for this command!\n");
-		return -1;
+		//return -1;
 	}
 
 	if (cfg.unlock_version == 0xffff) {
