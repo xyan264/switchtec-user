@@ -164,6 +164,7 @@ static void print_security_config(struct switchtec_security_cfg_state *state,
 		printf("Disabled by Default But Can Be Enabled\n");
 		break;
 	case SWITCHTEC_DEBUG_MODE_DISABLED:
+	case SWITCHTEC_DEBUG_MODE_DISABLED2:
 		printf("Always Disabled\n");
 		break;
 	default:
