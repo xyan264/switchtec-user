@@ -928,6 +928,14 @@ static int switchtec_fw_info_metadata_gen4(struct switchtec_dev *dev,
 	if (inf->part_id == SWITCHTEC_FW_PART_ID_G4_NVLOG)
 		return 1;
 
+	if (inf->part_id == SWITCHTEC_FW_PART_ID_G4_SEEPROM){
+		if (switchtec_is_gen5(dev))
+			//subcmd.subcmd = MRPC_PART_INFO_GET_SEEPROM;
+			return 1;
+		else
+			return 1;
+	}
+
 	metadata = malloc(sizeof(*metadata));
 	if (!metadata)
 		return -1;
@@ -1037,6 +1045,8 @@ static int switchtec_fw_part_info_gen4(struct switchtec_dev *dev,
 	case SWITCHTEC_FW_PART_ID_G4_NVLOG:
 		part_info = &all->nvlog;
 		break;
+	case SWITCHTEC_FW_PART_ID_G4_SEEPROM:
+		return switchtec_fw_info_metadata_gen4(dev, inf);
 	default:
 		errno = EINVAL;
 		return -1;
@@ -1207,6 +1217,7 @@ switchtec_fw_partitions_gen4[] = {
 	SWITCHTEC_FW_PART_ID_G4_IMG0,
 	SWITCHTEC_FW_PART_ID_G4_IMG1,
 	SWITCHTEC_FW_PART_ID_G4_NVLOG,
+	SWITCHTEC_FW_PART_ID_G4_SEEPROM,
 };
 
 static struct switchtec_fw_part_type *
