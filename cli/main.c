@@ -1019,6 +1019,57 @@ static int log_parse(int argc, char **argv)
 	return ret;
 }
 
+#define CMD_DESC_LOG_DEF_FILE "dump the app log or mailbox log definition data to a file"
+
+static int log_def_file(int argc, char **argv)
+{
+	int ret;
+
+	const struct argconfig_choice log_types[] = {
+		{"APP", SWITCHTEC_LOG_DEF_TYPE_APP,
+		 "app log definition data"},
+		{"MAILBOX", SWITCHTEC_LOG_DEF_TYPE_MAILBOX,
+		 "mailbox log definition data"},
+		{}
+	};
+	static struct {
+		struct switchtec_dev *dev;
+		enum switchtec_log_def_type log_type;
+		FILE *log_def_file;
+		const char *log_def_filename;
+	} cfg = {
+		.log_type = SWITCHTEC_LOG_DEF_TYPE_APP
+	};
+
+	const struct argconfig_options opts[] = {
+		DEVICE_OPTION,
+		{"type", 't',
+		 .meta = "TYPE", .cfg_type = CFG_CHOICES,
+		 .value_addr = &cfg.log_type,
+		 .argument_type = required_argument,
+		 .help = "log definition data type (default: APP)",
+		 .choices = log_types},
+		{"log_def_file", .cfg_type = CFG_FILE_W,
+		 .value_addr = &cfg.log_def_file,
+		 .argument_type=optional_positional,
+		 .force_default="switchtec_log_def.dat",
+		 .help="log definition file"},
+		{NULL}};
+
+	argconfig_parse(argc, argv, CMD_DESC_LOG_DEF_FILE, opts,
+			&cfg, sizeof(cfg));
+
+	ret = switchtec_log_def_to_file(cfg.dev, cfg.log_type,
+					fileno(cfg.log_def_file));
+	if (ret < 0)
+		switchtec_perror("log_def_file");
+	else
+		fprintf(stderr, "\nParsed log saved to %s.\n",
+			cfg.log_def_filename);
+
+	return ret;
+}
+
 #define CMD_DESC_TEST "test if the Switchtec interface is working"
 
 static int test(int argc, char **argv)
@@ -2248,6 +2299,7 @@ static const struct cmd commands[] = {
 	CMD(event_wait, CMD_DESC_EVENT_WAIT),
 	CMD(log_dump, CMD_DESC_LOG_DUMP),
 	CMD(log_parse, CMD_DESC_LOG_PARSE),
+	CMD(log_def_file, CMD_DESC_LOG_DEF_FILE),
 	CMD(test, CMD_DESC_TEST),
 	CMD(temp, CMD_DESC_TEMP),
 	CMD(port_bind_info, CMD_DESC_PORT_BIND_INFO),
