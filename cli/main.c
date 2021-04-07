@@ -1382,6 +1382,7 @@ static int print_fw_part_info(struct switchtec_dev *dev)
 	print_fw_part_line("BL2", sum->bl2.active);
 	print_fw_part_line("IMG", sum->img.active);
 	print_fw_part_line("CFG", sum->cfg.active);
+	print_fw_part_line("EEPROM", sum->seeprom.active);
 
 	for (i = 0, inf = sum->mult_cfg; inf; i++, inf = inf->next)
 		printf("   \tMulti Config %d%s\n", i, fw_active_string(inf));
