@@ -60,7 +60,7 @@ struct switchtec_i2c {
 #define CMD_GAS_READ  0xE9
 
 #define MAX_RETRY_COUNT  100
-#define MAX_STATUS_GET_RETRY  50
+#define MAX_STATUS_GET_RETRY  600
 #define PEC_BYTE_COUNT  1
 #define TWI_ENHANCED_MODE  0x80
 #define GAS_TWI_MRPC_ERR  0x20
