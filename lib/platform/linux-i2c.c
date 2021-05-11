@@ -317,6 +317,61 @@ i2c_write_fail:
 	return -1;
 }
 
+static uint8_t i2c_gas_data_write_direct(struct switchtec_dev *dev, void __gas *dest,
+				  const void *src, size_t n, uint8_t tag)
+{
+	int ret;
+	struct switchtec_i2c *idev = to_switchtec_i2c(dev);
+
+	struct i2c_msg msg;
+	struct i2c_rdwr_ioctl_data wdata = {
+		.msgs = &msg,
+		.nmsgs = 1,
+	};
+
+	struct {
+		uint8_t command_code;
+		uint8_t byte_count;
+		uint8_t tag;
+		uint32_t offset;
+		uint8_t data[];
+	} __attribute__((packed)) *i2c_data;
+
+	uint32_t gas_addr = (uint32_t)(dest - (void __gas *)dev->gas_map);
+
+	/* PEC is the last byte */
+	i2c_data = malloc(sizeof(*i2c_data) + n + PEC_BYTE_COUNT);
+
+	i2c_data->command_code = CMD_GAS_WRITE;
+	i2c_data->byte_count = (sizeof(i2c_data->tag)
+				+ sizeof(i2c_data->offset)
+			        + n);
+	i2c_data->tag = tag;
+
+	gas_addr = htobe32(gas_addr);
+	i2c_data->offset = gas_addr;
+	memcpy(&i2c_data->data, src, n);
+	msg.addr = idev->i2c_addr;
+	msg.flags = 0;
+	msg.len = sizeof(*i2c_data) + n + PEC_BYTE_COUNT;
+	msg.buf = (uint8_t *)i2c_data;
+
+	i2c_data->data[n] = i2c_msg_pec(&msg, msg.len - PEC_BYTE_COUNT, 0,
+					 true);
+
+//	ret = ioctl(idev->fd, I2C_RDWR, &wdata);
+write(idev->fd, i2c_data, msg.len);
+	if (ret < 0)
+		goto i2c_write_fail;
+
+	free(i2c_data);
+	return 0;
+
+i2c_write_fail:
+	free(i2c_data);
+	return -1;
+}
+
 
 static uint8_t i2c_gas_data_write_smbus(struct switchtec_dev *dev, void __gas *dest,
 				  const void *src, size_t n, uint8_t tag)
@@ -488,7 +543,7 @@ static void i2c_gas_write(struct switchtec_dev *dev, void __gas *dest,
 
 	do {
 		tag = get_tag(idev);
-		i2c_gas_data_write_smbus(dev, dest, src, n, tag);
+		i2c_gas_data_write_direct(dev, dest, src, n, tag);
 		status = i2c_gas_write_status_get_smbus(dev, tag);
 		if (status == 0 || status == GAS_TWI_MRPC_ERR)
 			break;
